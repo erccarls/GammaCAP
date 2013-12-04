@@ -1,0 +1,11 @@
+README
+./BGTools/BGTools.py
+./BGTools/__init__.py
+./Stats/ClusterResult.py
+./Stats/DBSCAN.py
+./Stats/MCSTATS.py
+./Stats/__init__.py
+pip-egg-info/gammacap.egg-info/PKG-INFO
+pip-egg-info/gammacap.egg-info/SOURCES.txt
+pip-egg-info/gammacap.egg-info/dependency_links.txt
+pip-egg-info/gammacap.egg-info/top_level.txt

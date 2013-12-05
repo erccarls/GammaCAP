@@ -18,7 +18,20 @@ class BGTools:
         @param diff_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
         @param iso_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
         """
-        ## @var self.Emin testing
+        ##@var Emin  
+        # Minimum energy in MeV.
+        ##@var Emax  
+        # Maximum energy in MeV.
+        ##@varTime   
+        # Total Integration time in seconds.
+        ##@var diff_f 
+        # Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
+        # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
+        # (instructions at http://planck.ucsc.edu/gammacap).
+        ##@var iso_f 
+        # Abosulte path to isotropic BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
+        # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
+        # (instructions at http://planck.ucsc.edu/gammacap).
         self.Emin   = Emin
         self.Emax   = Emax
         self.Time   = Time

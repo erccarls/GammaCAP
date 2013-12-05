@@ -182,7 +182,6 @@ class Scan:
         # Compute the background density if not specified.
         #TODO: If bgDensity not set, compute automatically based on area and density.
         #TODO: make lat/long cuts and specify shorter or greater distance by sign of long1-long2
-        #TODO: finish implementing 2d dbscan (note parameter D already added)
         #TODO: autocompute timeScale a based on BGdensity
         #TODO: Add fermi psf tools, including energy weighted averaging of r_68  
         #TODO: Add BDT tools

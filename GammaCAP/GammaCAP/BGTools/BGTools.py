@@ -22,7 +22,7 @@ class BGTools:
         # Minimum energy in MeV.
         ##@var Emax  
         # Maximum energy in MeV.
-        ##@varTime   
+        ##@var Time   
         # Total Integration time in seconds.
         ##@var diff_f 
         # Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
@@ -31,7 +31,11 @@ class BGTools:
         ##@var iso_f 
         # Abosulte path to isotropic BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
         # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
-        # (instructions at http://planck.ucsc.edu/gammacap).
+        # (instructions at http://planck.ucsc.edu/gammacap)
+        ##@var BGMap
+        # Contains a 2-d array with the diffuse galactic and isotropic backgrounds integrated over the energies and times specified during initialization.  Map units are photons/deg^2 and the effective area etc.. 
+        # have been empirically determined to agree with gtobssim.  If the diffuse and isotropic models are used with an instrument other than Fermi-LAT, such as CTA or Veritas, the normalizations of each energy 
+        # band should be matched in the BGTools.__Prep_Data() routine.   
         self.Emin   = Emin
         self.Emax   = Emax
         self.Time   = Time

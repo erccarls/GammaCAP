@@ -11,7 +11,7 @@ import multiprocessing as mp
 from multiprocessing import pool
 from functools import partial
 
-def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='euclidean'):
+def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='euclidean',D=3):
     """
     Runs DBSCAN3D on photon list, X, of coordinate triplets using parameters eps and n_samples defining the search radius and the minimum number of events.
     
@@ -30,7 +30,7 @@ def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='
     #===========================================================================
     # Compute DBSCAN
     #===========================================================================
-    db = DBSCAN(eps, nMin=nMin, a=a,indexing=indexing,metric=metric).fit(X)
+    db = DBSCAN(eps, nMin=nMin, a=a,indexing=indexing,metric=metric,D=D).fit(X)
     core_samples = db.core_sample_indices_ # Select only core points.
     labels = db.labels_                    # Assign Cluster Labels
     # Get the cluster labels for each core point
@@ -123,13 +123,25 @@ class DBSCAN(BaseEstimator, ClusterMixin):
     and Data Mining, Portland, OR, AAAI Press, pp. 226–231. 1996
     """
 
-    def __init__(self, eps=0.5, nMin=5, a=1, metric='euclidean',indexing = True):
+    def __init__(self, eps=0.5, nMin=5, a=1,D=3, metric='spherical',indexing = True):
+        ##@var eps 
+        # DBSCAN Search radius float in input units of X.
+        ##@var nMin 
+        #Minimum number of samples in eps neighborhood for core points. Can be single int, or array of shape (n,1) for n input samples.
+        ##@var a
+        #DBSCAN temporal search half-height.  The temporal analog of epsilon, execept that the dbscan searches cylindrically with flat time surfaces as the boundary. Unused for D=2
+        ##@var D
+        # Number of dimensions to search.  Must be 2 (for 2 spatial dimensions) or 3 for (2 spatial + 1 temporal). DEFAULT 3 
+        ##@var metric
+        #Metric used for distance calculations. Can be 'euclidean' or 'spherical' (spherical uses lat,long and vincenty's formula for great circle distances.
+        ##@var indexing
+        #Grid based spatial indexing improves speeds for input > 2000 samples.  May provide slight speedup for lower number.  Usually irrelevant to disable. 
         self.eps = eps
         self.nMin = nMin
         self.metric = metric
         self.a = a
         self.indexing = indexing
-        
+        self.D = D
     def fit(self, X, **params):
         """Perform DBSCAN clustering from vector array or distance matrix.
 
@@ -140,28 +152,18 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         self.core_sample_indices_, self.labels_ = self.dbscan3_indexed(X,**self.get_params())
         return self
 
-    def dbscan3_indexed(self, X, eps, nMin, a, metric,indexing):
+    def dbscan3_indexed(self, X, eps, nMin, a, metric,indexing,D):
         """Perform DBSCAN clustering from vector array or distance matrix.
+        @param X a set of coordinate triplets (lat,long,time) for each input sample.  If D=2, time is unused, and need not be given. 
+        @param eps DBSCAN Search radius float in input units of X.
+        @param nMin Minimum number of samples in eps neighborhood for core points. Can be single int, or array of shape (n,1) for n input samples.
+        @param a DBSCAN temporal search half-height.  The temporal analog of epsilon, execept that the dbscan searches cylindrically with flat time surfaces as the boundary. Unused for D=2
+        @param D Number of dimensions to search.  Must be 2 (for 2 spatial dimensions) or 3 for (2 spatial + 1 temporal). DEFAULT 3 
+        @param metric Metric used for distance calculations. Can be 'euclidean' or 'spherical' (spherical uses lat,long and vincenty's formula for great circle distances.
+        @param indexing Grid based spatial indexing improves speeds for input > 2000 samples.  May provide slight speedup for lower number.  Usually irrelevant to disable.
     
-        Parameters
-        ----------
-        X: array [X, Y, T] where X,Y,T are a single coordinate vector.
-        eps: float
-            The maximum distance between two samples for them to be considered
-            as in the same neighborhood.
-        min_samples: int
-            The number of samples in a neighborhood for a point to be considered
-            as a core point.
-        metric: string
-            Compute distances in 'euclidean', or 'spherical' coordinate space
-    
-        Returns
-        -------
-        core_samples: array [n_core_samples]
-            Indices of core samples.
-    
-        labels : array [n_samples]
-            Cluster labels for each point.  Noisy samples are given the label -1.
+        @returns core_samples: array [n_core_samples] Indices of core samples.
+        @returns labels : array [n_samples] Cluster labels for each point.  Noisy samples are given the label -1.
     
         References
         ----------
@@ -172,8 +174,9 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         """
         
         X = np.asarray(X,dtype = np.float32)    # convert to numpy array
-        XX,XY,XT = X[:,0],X[:,1],X[:,2] # Separate spatial component
         n = np.shape(X)[0]   # Number of points
+        if D==3: XX,XY,XT = X[:,0],X[:,1],X[:,2] # Separate spatial component
+        if D==2: XX,XY,XT = X[:,0],X[:,1],np.zeros(n) # Separate spatial component and make up time component
         where = np.where     # Defined for quicker calls
         square = np.square   # Defined for quicker calls
         sin = np.sin
@@ -190,7 +193,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         # anomalous behavior.
         startX, stopX = np.min(XX), np.max(XX) # widths
         startY, stopY = np.min(XY), np.max(XY)
-        eps2=eps*2. # Larger grids is a speed advantage in most cases (i.e. takes longer to index with finer grid)
+        eps2=eps*2. # Larger grids offer a speed advantage in most cases (i.e. takes longer to index with finer grid)
         # We choose rectangles of 6x6 epsilons and return all grid elements when query point is within 10 degrees of a pole.
         GridSizeX, GridSizeY = int(np.ceil((stopX-startX)/eps2)), int((np.ceil((stopY-startY)/eps2)))
         Xidx, Yidx = np.floor(np.divide((XX-startX),eps2)).astype(int), np.floor(np.divide((XY-startY),eps2)).astype(int) # Grid indices for all points.
@@ -259,8 +262,11 @@ class DBSCAN(BaseEstimator, ClusterMixin):
                 dLam = y-y[j] # lon
                 # Distances using Vincenty's formula for arc length on a great circle.
                 d = arctan2(sqrt( square(cos(x)*sin(dLam) ) + square(cos(x[j])*sin(x)-sin(x[j])*cos(x)*cos(dLam)) ) , sin(x[j])*sin(x)+cos(x[j])*cos(x)*cos(dLam) )
-                # Find where within time constraints
-                tcut = np.logical_and(XT[idx] <= XT[k]+eps*float(a),XT[idx] >= XT[k]-eps*float(a))
+                
+                # Find where within time constraints if D=3, else just set all true
+                if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+eps*float(a),XT[idx] >= XT[k]-eps*float(a))
+                else:    tcut = np.ones(len(idx)) 
+                # Find where the real distance is less than eps
                 rcut = d<np.deg2rad(eps)
                 return idx[where(np.logical_and(rcut, tcut)==True)[0]] # This now contains indices of points in the eps neighborhood 
             #=========================================================================================
@@ -306,7 +312,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
 
 
 
-def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin):
+def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin,D):
     """ Returns the epsilon neighborhood of a point for euclidean metric"""  
     i,j = Xidx[k],Yidx[k]
     il,ih = i-1, i+2
@@ -317,13 +323,12 @@ def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin):
     if jh>=GridSizeY: jh=-1
     idx = np.array([item for sublist in [item for sublist2 in Grid[il:ih,jl:jh] for item in sublist2] for item in sublist])
     if len(idx) !=0:
-        tcut = np.logical_and(XT[idx] <= (XT[k]+eps*float(a)),XT[idx] >= (XT[k]-eps*float(a)))
+        # if D==3, cut on T, else include all.
+        if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+eps*float(a),XT[idx] >= XT[k]-eps*float(a))
+        else:    tcut = np.ones(len(idx)) 
         tcut = np.where(tcut==True)[0]
-        if len(tcut)!=0:
-            try:
-                idx = idx[tcut] #original indices meeting tcut  This is the rough eps neighborhood
-            except:
-                print 'Error with idx', idx                    
+        if len(tcut)!=0: 
+            idx = idx[tcut] #original indices meeting tcut  This is the rough eps neighborhood
             # Compute actual distances using numpy vector methods                
             return idx[np.where( np.square( XX[idx] - XX[k]) + np.square(XY[idx] - XY[k]) <= eps*eps)[0]]
         else: return np.array([])

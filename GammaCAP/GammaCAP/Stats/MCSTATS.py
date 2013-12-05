@@ -35,19 +35,16 @@ class Scan:
         # Number of dimensions for DBSCAN to use. DDEFAULT=3\n
         # Values:\n
         # int in {2,3} (DEFAULT=3)
-        self.D = D
         ##@var a
         #The DBSCAN3d temporal search half-height.  Unused for 2d scans.\n
         #Values:  \n
         #    -1 (DEFAULT): Uses the mean counts for the entire input simulation to compute the background density and then sets a as low as possible within the fragmentation limits.\n 
         #    float>0: Specified in seconds.
-        self.a           = float(a)
         ##@var eps
         #The DBSCAN3d spatial search radius.\n
         #Values:  \n
         #    -1 (DEFAULT): Averages the Fermi 68% containment radius over the input energy ranges (by default) or ranges specified by eMin and eMax.\n  
         #    float>0: Specified in degrees.     
-        self.eps         = float(eps)
         ##@var nMinMethod 
         #Specifies which method to use when evaluating the background count for DBSCAN.\n
         #Values:\n
@@ -55,90 +52,92 @@ class Scan:
         #    'BGCenter'        : Same as above, but just samples the center value of the BG template instead of integrating.  Much more efficient.\n
         #    'isotropic'       : One must specify bgDensity as well which is multiplied by the DBSCAN search volume to obtain the background rate.\n
         #    'nMin'            : Specify the value of nMin yourself, instead of using nMinSigma (not very useful for varying background)
-        self.nMinMethod  = nMinMethod
         ##@var nMinSigma
         #Z-score over mean background density to calculate the nMin parameter of DBSCAN.  Unused if nMinMethod='nMin'.\n
         #Values:\n
         #float>0 (DEFAULT 5).
-        self.nMinSigma   = float(nMinSigma)
         ##@var nMin
         # DBSCAN parameter for the minimum number of events in an eps-neighborhood before becoming a core point (Unused by default). If nMinMethod='nMin', this specifies the value to use.\n
         # Values:\n
         # int>0: For uniform nMin.\n
         # numpy.ndarray shape(n,1): Specify an array of positive integers where n is the number of input samples.  
-        self.nMin        = int(nMin)
         ##@var metric
         # Specify the metric of the input data.
         # Values:\n
         # 'spherical' (DEFAULT):  This should be used for any real data in galactic coordinates\n
         # 'euclidean' : If simulating data it can be easier to use euclidean coordinates.
-        self.metric      = metric
         ##@var diffModel
         # Absolute path to the galactic diffuse model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
-        self.diffModel   = diffModel
         ##@var isoModel
         # Absolute path to the diffuse isotropic model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
-        self.isoModel    = isoModel
         ##@var clusterResults
         # Stores the ClusterResults object from each scan. 
-        self.clusterResults = []
         ##@var nCorePoints
         #Clusters must have at least nCorePoints members to be valid. default=3 (i.e. this is low threshold for the number of events).\n
         #Values:\n
         #int>2 (DEFAULT=3)
-        self.nCorePoints = int(nCorePoints)    
         ##@var sigMethod
         #Specifies the method for evaluating the expected background count (thus significance) of a cluster.\n  
         #Values:\n
         #'BGInt' (DEFAULT): Integrate the background template over the cluster ellipse to determine local background density. **note**:currently integrates a square circumscribed by the semimajor axis to find density and multiplies by ellipse area.\n
         #'annulus': Computes count density in an annulus of radii ('inner','outer')*semimajor-axis centered on the cluster centroid.        \n
         #'isotropic': Uses bgDensity*ellipse-area to determine the background count.\n
-        self.sigMethod   = sigMethod
         ##@var bgDensity
         # Specifies the mean background density (Unused unless (sigMethod or nMinMethod)='isotropic').\n
         # Values:\n
         # float>0 (DEFAULT -1): If -1 computes area spanned by input and divides by total number of photons.  Else specify in photons/deg^2. **Automatic calculation not yet implemented
-        self.bgDensity   = bgDensity
         ##@var totalTime
         # The total exposure or simulation time being used in seconds.\n
         # Values: \n
         # float>1 (DEFAULT -1): If -1, use max-min time of input. Best option as long as data not extremely sparse.  Else specified in seconds
-        self.totalTime   = TotalTime
         ##@var inner
         # Inner fractional radius of the annulus. Unused unless sigMethod='annulus'.\n
         # The inner radius used to evaluate the background count expected for a cluster is given by inner*Semimajor-axis in degrees.
         # Values: \n
         # float>0 (DEFAULT 1.25)
-        self.inner       = float(inner)
         ##@var outer
         # Outer fractional radius of the annulus. Unused unless sigMethod='annulus'.\n
         # The outer radius used to evaluate the background count expected for a cluster is given by inner*Semimajor-axis in degrees.
         # Values: \n
         # float>0 (DEFAULT 2)
-        self.outer       = float(outer)
         ##@var fileout
         # If specified, ClusterResult is written (via cpickle) to file at this path. 
-        self.fileout     = ''
         ##@var numProcs
         # For multithreaded portions, specifies the number of processors to use (currently not implemented).
-        self.numProcs    = int(numProcs) 
         ##@var plot
         # If True, scatter plot the DBSCAN results with clusters color-coded and noise in black (DEFAULT=False).
-        self.plot        = plot
         ##@var indexing
         # If True, use grid-based indexing to speedup cluster computations (default=True)\n
         # Can slightly improve speed if processing many simulations with <2k points each.  Otherwise leave True 
-        self.indexing    = bool(indexing)
         ##@var eMin
         # Specifies the minimum energy of the input in MeV (autodetected by default, but if specified will clip data)
-        self.eMin = float(eMin)
         ##@var eMax
         # Specifies the maximum energy of the input in MeV (autodetected by default, but if specified will clip data)
-        self.eMax = float(eMax)
         #@var output
         #If False, supresses progress output.
+        self.D = D
+        self.a           = float(a)
+        self.eps         = float(eps)
+        self.nMinMethod  = nMinMethod
+        self.nMinSigma   = float(nMinSigma)
+        self.nMin        = int(nMin)
+        self.metric      = metric
+        self.diffModel   = diffModel
+        self.isoModel    = isoModel
+        self.clusterResults = []
+        self.nCorePoints = int(nCorePoints)  
+        self.sigMethod   = sigMethod
+        self.bgDensity   = bgDensity
+        self.totalTime   = TotalTime
+        self.inner       = float(inner)
+        self.fileout     = ''
+        self.fileout     = ''
+        self.numProcs    = int(numProcs) 
+        self.plot        = plot
+        self.indexing    = bool(indexing)
+        self.eMin = float(eMin)
+        self.eMax = float(eMax)
         self.output = output
-        
         
     def Compute_Clusters(self, mcSims):
         '''
@@ -233,12 +232,12 @@ class Scan:
         #====================================================================
         if self.output==True:"Beginning DBSCAN..."
         start=time.time()    
-        dbscanResults = self.__DBSCAN_THREAD(mcSims, eps=self.eps, min_samples=self.nMin,timeScale=self.a,nCorePoints = self.nCorePoints,plot=self.plot,indexing=self.indexing,metric=self.metric)
+        dbscanResults = self.__DBSCAN_THREAD(mcSims)
         if self.output==True: 'Completed DBSCAN and Cluster Statistics in', (time.time()-start), 's'
         
         if self.output==True:"Computing Cluster Properties..."
         start=time.time()    
-        ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims], BGDensity=self.bgDensity,TotalTime=self.totalTime, inner=self.inner,outer=self.outer,sigMethod=self.sigMethod,metric=self.metric)
+        ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims])
         if self.output==True: 'Completed Cluster Properties in', (time.time()-start), 's'
         
         if (self.fileout != ''): 
@@ -290,12 +289,12 @@ class Scan:
     ####################################################################################################
     def __DBSCAN_THREAD(self,sim):
             """
-            Internal Method which calls DBSCAN
+            Internal Method which calls DBSCAN. seperate for multithreading (not implemented), although must be top-level function for that.
             @param sim numpy.ndarray of shape (3+,n) where the first three elements are (lat,long,T)
             @return Labels corresponding to the input points. 
             """
             X = np.transpose(sim[0:3])
-            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, N_CorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric)      
+            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, N_CorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric,D=self.D)      
     
     def __Cluster_Properties_Thread(self,input):
         """Internal Method which computes manages computation of various cluster properties.
@@ -334,9 +333,7 @@ class Scan:
             CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T = np.transpose([self.__Cluster_Size_Spherical(CRCoords[cluster]) for cluster in range(len(clusters))])
         else: print 'Invalid metric: ' , str(self.metric)
         
-        
-        
-        
+            
         CRMembers = np.array([len(CRCoords[cluster]) for cluster in range(len(clusters))]) # count the number of points in each cluster.
         # Input into cluster results instance
         CR = ClusterResult.ClusterResult(Labels=np.array(CRLabels), Coords=CRCoords, 
@@ -346,13 +343,15 @@ class Scan:
                                          MedR=CRMedR      , MedT=CRMedT,
                                          Members=CRMembers, Sigs=[], 
                                          SigsMethod=self.sigMethod, NumClusters=CRNumClusters,PA=CRPA)  # initialize new ClusterResults instance
+        # If two dimensional, set the size95T to half  the total exposure time so that significance is computed correctly.
+        if self.D==2: CR.Size95T = self.totalTime/2.*np.ones(len(CR.Size95T))
         #----------------------------------------------------
         # Compute significances
         #----------------------------------------------------
         if self.sigMethod == 'isotropic':
-            CR.Sigs  = np.array([self.__Compute_Cluster_Significance_3d_Isotropic(CRCoords[cluster]) for cluster in range(len(clusters))])
+            CR.Sigs  = np.array([self.__Compute_Cluster_Significance_3d_Isotropic(cluster,CR.Size95X,CR.Size95Y, CR.Size95T) for cluster in range(len(clusters))])
         elif self.sigMethod =='annulus':
-            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(CRCoords[cluster], np.transpose(sim)) for cluster in range(len(clusters))])
+            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(cluster, np.transpose(sim),CR.Size95X,CR.Size95Y, CR.Size95T) for cluster in range(len(clusters))])
         elif self.sigMethod == 'BGInt':
             CR.SigsMethod ='BGInt'
             CR.Sigs = np.array(self.BG.SigsBG(CR))
@@ -490,16 +489,12 @@ class Scan:
         return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CentX0,CentY0,CentT0,SIG95X,SIG95Y,SIG95T
     
     
-    def __Compute_Cluster_Significance_3d_Isotropic(self, X):
+    def __Compute_Cluster_Significance_3d_Isotropic(self, X, Size95X,Size95Y, Size95T):
         """
-        Takes input list of coordinate triplets (in angular scale) and computes the cluster significance based on a background model.
-        
-        Inputs:
-            -X is a tuple containing a coordinate pair for each point in a cluster.  
-            -BGDensity is the 2-d number of events per square degree integrated over the background.  Time is handled seperately
-            -TotalTime is the full simulation time in units of the time dimension.  Usually months
-            
-        returns significance
+        Computes the cluster significance using assuming an isotropic background. 
+        @param X Coordinate triplets lat/long/time of length 'cluster members'
+        @param Size95T from ClusterResults object            
+        @returns significance
         """
         # Default to zero significance
         if (len(X)==1):return 0
@@ -509,8 +504,8 @@ class Scan:
         r = np.sqrt(  np.square(x-centX) + np.square(y-centY) ) # Build list of radii from cluster centroid
         countIndex = int(np.ceil(0.95*np.shape(r)[0]-1)) # Sort the list and choose the radius where the cumulative count is >95% 
         clusterRadius = np.sort(r)[countIndex]   # choose the radius at this index 
-        N_bg = np.pi * clusterRadius**2. * self.BGDensity # Use isotropic density to compute the background expectation
-        dT = (np.max(t)-np.min(t))/float(self.TotalTime) # Rescale according to the total time.
+        N_bg = np.pi * Size95X*Size95Y * self.bgDensity # Use isotropic density to compute the background expectation
+        dT = 2*Size95T/float(self.TotalTime) # Rescale according to the total time.
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
         if dT > .01: # This would be a 15 day period     
@@ -526,7 +521,7 @@ class Scan:
         
         
         
-    def __Compute_Cluster_Significance_3d_Annulus(self,X_cluster,X_all):
+    def __Compute_Cluster_Significance_3d_Annulus(self,X_cluster,X_all,Size95X,Size95Y,Size95T):
         """
         Takes input list of coordinate triplets for the cluster and for the entire simulation and computes the cluster size.
         Next, the background level is computed by drawing an annulus centered on the the cluster with inner and outer radii 
@@ -534,36 +529,34 @@ class Scan:
         with the axis aligned temproally.  Similarly, the background annulus is taken over a cylindrical shell and is 
         computed over the range of times in X_all (thus if the background is time varying, this will average that).  
         
-        Inputs:
-            -X_cluster: A tuple containing a coordinate triplet (x,y,z) for each point in a cluster.  
-            -X_all:     A tuple containing coordinate triplets for background events, typically just all events.
-            -inner:    The inner radius of the background annulus in fraction of cluster radius.
-            -outer:    The outer radius of the background annulus in fraction of cluster radius.
+        @param X_cluster A tuple containing a coordinate triplet (x,y,z) for each point in a cluster.  
+        @param X_all     A tuple containing coordinate triplets for background events, typically just all events.
+        @param Size95T from ClusterResults object            
+        @returns significance
             
         return:
-            Cluster significance from Li & Ma (1985)
+            Cluster significance from Li & Ma (1983)
         """
+        #TODO: Update annulus method to ellipse calculation instead of spherical.
         # Default to zero significance
         if (len(X_cluster)==1):return 0
         # Otherwise.......
         x,y,t = np.transpose(X_cluster) # Reformat input
         x_all,y_all,t_all = X_all # Reformat input
         centX,centY,centT = np.mean(x), np.mean(y),np.mean(t) # Compute Centroid
-        minT,maxT = np.min(t), np.max(t) # find the window of times for the cluster
         r = np.sqrt(np.square(x-centX)+np.square(y-centY)) # Build list of radii from cluster centroid
         countIndex = int(np.ceil(0.95*np.shape(r)[0]-1)) # Sort the list and choose the radius where the cumulative count is >95% 
         clusterRadius = np.sort(r)[countIndex]             # choose the radius at this index 
-        min_T_all, max_T_all = np.min(t_all),np.max(t_all)
         ################################################################
         # Estimate the background count
-        AnnulusVolume = np.pi* ((self.outer*clusterRadius)**2 -(self.inner*clusterRadius)**2)*(max_T_all-min_T_all)
+        AnnulusVolume = np.pi* ((self.outer*clusterRadius)**2 -(self.inner*clusterRadius)**2)*(self.totalTime)
         r_all = np.sqrt(np.square(x_all-centX)+np.square(y_all-centY)) # compute all points radius from the centroid. 
         r_cut = np.logical_and(r_all>clusterRadius*self.inner,r_all<clusterRadius*self.outer)# Count the number of points within the annulus and find BG density
         idx =  np.where(r_cut==True)[0] # pick points in the annulus
         BGDensity = np.shape(idx)[0]/AnnulusVolume # Density = counts / annulus volume 
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
-        N_bg = np.pi * clusterRadius**2. * (maxT-minT)* BGDensity # BG count = cluster volume*bgdensity
+        N_bg = np.pi * Size95X*Size95Y * 2*Size95T* BGDensity # BG count = cluster volume*bgdensity
         N_cl = countIndex # Number of counts in cluster.
         # Ensure log args are greater than 0.
         if N_cl/(N_cl+N_bg) <= 0 or N_bg/(N_cl+N_bg) <= 0: return 0 

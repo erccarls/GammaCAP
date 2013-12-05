@@ -222,8 +222,8 @@ class BGTools:
         @return Sigs Significances of each cluster: ndarray shape(n,1)
         """
         cx,cy = CR.CentX, CR.CentY # Get centroids
-        N_bg  =  self.GetIntegratedBG(l=cy,b=cx, A=CR.Size95X, B=CR.Size95Y)# Evaluate the background density at that location
-        N_bg  = N_bg*2.*CR.Size95T/12.*3.15e7/self.Time # Find ratio of cluster time length to total exposure time
+        N_bg  = self.GetIntegratedBG(l=cy,b=cx, A=CR.Size95X, B=CR.Size95Y)# Evaluate the background density at that location
+        N_bg  = N_bg*2.*CR.Size95T/self.Time # Find ratio of cluster time length to total exposure time
         N_cl  = (0.95*CR.Members) # 95% containment radius so only count 95% of members
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off

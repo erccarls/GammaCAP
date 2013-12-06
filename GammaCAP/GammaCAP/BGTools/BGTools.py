@@ -18,6 +18,7 @@ class BGTools:
         @param diff_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
         @param iso_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
         """
+        #TODO: Recalibrate BGTemplate normalization with gtselect filtering
         ##@var Emin  
         # Minimum energy in MeV.
         ##@var Emax  

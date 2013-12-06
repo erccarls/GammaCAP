@@ -24,7 +24,7 @@ class Scan:
     Class containing DBSCAN setup and cluster properties.  This is the only object a general user will need to interact with.
     """
     def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=3, nMinSigma=5. ,nCorePoints = 3, 
-                 nMin = -1 , sigMethod ='BGInt', bgDensity=-1, TotalTime=-1,inner=1.25,outer=2.0, 
+                 nMin = -1 , sigMethod ='BGInt', bgDensity=-1, totalTime=-1,inner=1.25,outer=2.0, 
                  fileout = '',numProcs = 1, plot=False,indexing=True,metric='spherical',eMax=-1,eMin=-1,
                  output = True, diffModel = '', isoModel  = ''):
         """
@@ -128,7 +128,7 @@ class Scan:
         self.nCorePoints = int(nCorePoints)  
         self.sigMethod   = sigMethod
         self.bgDensity   = bgDensity
-        self.totalTime   = TotalTime
+        self.totalTime   = totalTime
         self.inner       = float(inner)
         self.fileout     = ''
         self.fileout     = ''
@@ -293,7 +293,7 @@ class Scan:
             @return Labels corresponding to the input points. 
             """
             X = np.transpose(sim[0:3])
-            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, N_CorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric,D=self.D)      
+            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, nCorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric,D=self.D)      
     
     def __Cluster_Properties_Thread(self,input):
         """Internal Method which computes manages computation of various cluster properties.
@@ -348,9 +348,9 @@ class Scan:
         # Compute significances
         #----------------------------------------------------
         if self.sigMethod == 'isotropic':
-            CR.Sigs  = np.array([self.__Compute_Cluster_Significance_3d_Isotropic(cluster,CR.Size95X,CR.Size95Y, CR.Size95T) for cluster in range(len(clusters))])
+            CR.Sigs  = np.array([self.__Compute_Cluster_Significance_3d_Isotropic(CR.Coords[cluster],CR.Size95X[cluster],CR.Size95Y[cluster], CR.Size95T[cluster]) for cluster in range(len(clusters))])
         elif self.sigMethod =='annulus':
-            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(cluster, np.transpose(sim),CR.Size95X,CR.Size95Y, CR.Size95T) for cluster in range(len(clusters))])
+            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(CR.Coords[cluster], np.transpose(sim),CR.Size95X[cluster],CR.Size95Y[cluster], CR.Size95T[cluster]) for cluster in range(len(clusters))])
         elif self.sigMethod == 'BGInt':
             CR.SigsMethod ='BGInt'
             CR.Sigs = np.array(self.BG.SigsBG(CR))
@@ -368,7 +368,7 @@ class Scan:
     
     def __Cluster_Size(self,cluster_coords):
         """Returns basic cluster properties, given a set of cluster coordinate triplets""" 
-        X,Y,T = np.transpose(cluster_coords)
+        X,Y,T,E = np.transpose(cluster_coords)
         CentX0,CentY0,CentT0 = np.mean(X),np.mean(Y), np.mean(T)
         X, Y = X-CentX0, Y-CentY0 
         
@@ -402,8 +402,8 @@ class Scan:
     
     
     def __Cluster_Size_Spherical(self,cluster_coords):
-        """Returns basic cluster properties, given a set of cluster coordinate triplets""" 
-        X,Y,T = np.transpose(cluster_coords)
+        """Returns basic cluster properties, given a set of cluster coordinate triplets"""
+        X,Y,T,E = np.transpose(cluster_coords)
         # Map to cartesian
         X, Y = np.deg2rad(X), np.deg2rad(Y)
         x = np.cos(X) * np.cos(Y)
@@ -498,13 +498,13 @@ class Scan:
         # Default to zero significance
         if (len(X)==1):return 0
         # Otherwise.......
-        x,y,t = np.transpose(X) # Reformat input
+        x,y,t,E = np.transpose(X) # Reformat input
         centX,centY,centT = np.mean(x), np.mean(y),np.mean(t) # Compute Centroid
         r = np.sqrt(  np.square(x-centX) + np.square(y-centY) ) # Build list of radii from cluster centroid
         countIndex = int(np.ceil(0.95*np.shape(r)[0]-1)) # Sort the list and choose the radius where the cumulative count is >95% 
         clusterRadius = np.sort(r)[countIndex]   # choose the radius at this index 
         N_bg = np.pi * Size95X*Size95Y * self.bgDensity # Use isotropic density to compute the background expectation
-        dT = 2*Size95T/float(self.TotalTime) # Rescale according to the total time.
+        dT = 2*Size95T/float(self.totalTime) # Rescale according to the total time.
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
         if dT > .01: # This would be a 15 day period     
@@ -540,7 +540,7 @@ class Scan:
         # Default to zero significance
         if (len(X_cluster)==1):return 0
         # Otherwise.......
-        x,y,t = np.transpose(X_cluster) # Reformat input
+        x,y,t,e = np.transpose(X_cluster) # Reformat input
         x_all,y_all,t_all = X_all # Reformat input
         centX,centY,centT = np.mean(x), np.mean(y),np.mean(t) # Compute Centroid
         r = np.sqrt(np.square(x-centX)+np.square(y-centY)) # Build list of radii from cluster centroid

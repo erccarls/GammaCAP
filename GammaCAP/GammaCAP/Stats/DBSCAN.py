@@ -175,6 +175,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         
         X = np.asarray(X,dtype = np.float32)    # convert to numpy array
         n = np.shape(X)[0]   # Number of points
+        print np.shape(X)
         if D==3: XX,XY,XT = X[:,0],X[:,1],X[:,2] # Separate spatial component
         if D==2: XX,XY,XT = X[:,0],X[:,1],np.zeros(n) # Separate spatial component and make up time component
         where = np.where     # Defined for quicker calls

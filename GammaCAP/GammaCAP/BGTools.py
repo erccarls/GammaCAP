@@ -10,7 +10,7 @@ class BGTools:
     """
     Tools for estimating cluster significances and background counts based on the Fermi Collaboration's diffuse galactic and isotropic background models.
     """
-    def __init__(self,Emin,Emax,Time,diff_f, iso_f):
+    def __init__(self,Emin,Emax,Time,diff_f='', iso_f=''):
         """ Initializes the background map.
         @param Emin  Minimum energy in MeV.
         @param Emax  Maximum energy in MeV.
@@ -42,7 +42,7 @@ class BGTools:
         self.Time   = Time
         self.diff_f = diff_f
         self.iso_f  = iso_f
-        self.BGMap  = self.__Prep_Data(Emin,Emax,Time,diff_f='',iso_f='')
+        self.BGMap  = self.__Prep_Data(Emin,Emax,Time,diff_f,iso_f)
     
     
     def __Prep_Data(self,E_min,E_max,Time,diff_f, iso_f):
@@ -50,7 +50,7 @@ class BGTools:
         Returns a numpy array with a sky map of the number of photons per square degree.
         @param Emin  Minimum energy in MeV.
         @param Emax  Maximum energy in MeV.
-        @param Time   Total Integration time in seconds.
+        @param Time  Total Integration time in seconds.
         @param diff_f Abosulte path to diffuse BG model (DEFAULT '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
         @param iso_f Abosulte path to diffuse BG model (DEFAULT '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.        
         """ 
@@ -82,14 +82,11 @@ class BGTools:
         # Now compute the average energies in each bin
         energies = np.array([np.mean(energies[i:i+2]) for i in range(len(energies)-1)])
         
-        # Interpolate effective area.  Empiracally fudged to agree with  gtobssim simulations.
-        EAE =[1000.0, 1579.2081441197518, 2493.8983624541534, 3938.3846045945115, 6219.5290422515081,
-              9821.9309161129022, 15510.873293707069, 24494.897427831787, 38682.541507409958, 
-              61087.784583752211, 96470.326920894411, 152346.72593937156, 240587.19033343517, 379937.25034545001]
-        EA = [0.56474960595679269, 0.61900037984106093, 0.6477423909408575, 0.6494559139904782,
-              0.65105871317624175, 0.65634657600811919, 0.64493619600906349, 0.65972804516431405,
-              0.70880567499919545, 0.77383792531196494, 0.88505388177027788, 0.84500602665697677, 
-              0.93898153929664407, 0.59507693678706786]
+        # Interpolate effective area.  Empirically fudged to agree with  gtobssim simulations.
+        EAE =[1000.0, 1178.2423505388722, 1388.2550366033665, 1635.700877474977, 1927.2520466546125, 2270.769981531183, 2675.5173605724094, 3152.407863828395, 3714.3004513343931, 4376.346094387829, 5156.3963090231291, 6075.4845074533696, 7158.3931467243601, 8434.3219672778632, 9937.6753399271056, 11708.989951407897, 13796.027842782876, 16255.064273580221, 19152.405137863607, 22566.174848109185, 26588.422895707346, 31327.605889759787, 36911.512000305913, 43490.706661184231, 51242.592443070287, 60376.192567828584, 71137.787047705933, 83817.553423222605, 98757.391161795298, 116360.14069556053, 137100.44568217112, 161537.55138048826, 190330.38423884034, 224255.31930453796, 264227.11453822412, 311323.57650962099, 366814.62256486423, 432196.52310285484, 509232.24727543467]
+        EA = [0.52036753187409324, 0.49307283511929845, 0.551804598116726, 0.52198010999911815, 0.59351418722030724, 0.5453142420485031, 0.59966209057237363, 0.55361869554688314, 0.61384906001730077, 0.54991232230725362, 0.60472745950396678, 0.56473971717852844, 0.62158960165951527, 0.56872126617220475, 0.62347326376674439, 0.59604165934578934, 0.62027434477916565, 0.60792228472335774, 0.61520808459002652, 0.61216533579415622, 0.61028260222486375, 0.63875497160013972, 0.603130938535548, 0.65519470340508013, 0.64922827311595976, 0.71297330489036181, 0.67331585966560892, 0.78395664077353622, 0.70620028253076084, 0.85478922335349761, 0.78918696281774015, 0.82933312639374024, 0.72262428478784013, 0.85987205364782182, 0.84660204715406784, 0.86991569204303021, 0.79324745991535839, 0.73671954673231432, 0.13621062441760959]
+        #EA = np.ones(len(EAE))
+        
         effArea = np.interp(energies,EAE,np.array(EA))
         
         #Determine weights to convert flux to photon counts

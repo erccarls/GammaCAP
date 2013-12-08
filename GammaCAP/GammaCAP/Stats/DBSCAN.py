@@ -34,12 +34,21 @@ def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='
     core_samples = db.core_sample_indices_ # Select only core points.
     labels = db.labels_                    # Assign Cluster Labels
     # Get the cluster labels for each core point
-    coreLabels = [labels[i] for i in core_samples]
-    # Count clusters with > nCore, core points
-    validClusters = [i if coreLabels.count(i) >= nCorePoints else None for i in set(coreLabels)]
-    # relabel points that are not in valid clusters as noise.  If you want border points, comment out this line
-    labels = np.array([label if label in validClusters else -1 for label in labels])
-    
+   
+    # pick out the cluster labels of core points
+    coreLabels = labels[core_samples]
+    # Count the number of members for each cluster    
+
+    clusterCounts = np.bincount((np.array(coreLabels)+1).astype(int))[1:]
+    # find which clusters have too few points
+    invalid = np.where(clusterCounts < nCorePoints)[0] # clusters which aren't valid
+    # set invalid clusters to noise.
+    for i in invalid:
+        coreLabels[np.where(coreLabels==i)[0]]=-1 
+    # set all labels to -1 for noise
+    labels = -np.ones(len(labels)).astype(int)
+    labels[core_samples] = coreLabels
+
     #===========================================================================
     # # Plot result
     #===========================================================================
@@ -123,7 +132,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
     and Data Mining, Portland, OR, AAAI Press, pp. 226–231. 1996
     """
 
-    def __init__(self, eps=0.5, nMin=5, a=1,D=3, metric='spherical',indexing = True):
+    def __init__(self, eps, nMin, a,D=3, metric='spherical',indexing = True):
         ##@var eps 
         # DBSCAN Search radius float in input units of X.
         ##@var nMin 
@@ -175,7 +184,6 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         
         X = np.asarray(X,dtype = np.float32)    # convert to numpy array
         n = np.shape(X)[0]   # Number of points
-        print np.shape(X)
         if D==3: XX,XY,XT = X[:,0],X[:,1],X[:,2] # Separate spatial component
         if D==2: XX,XY,XT = X[:,0],X[:,1],np.zeros(n) # Separate spatial component and make up time component
         where = np.where     # Defined for quicker calls
@@ -272,9 +280,9 @@ class DBSCAN(BaseEstimator, ClusterMixin):
                 return idx[where(np.logical_and(rcut, tcut)==True)[0]] # This now contains indices of points in the eps neighborhood 
             #=========================================================================================
             neighborhoods = [ __epsilonQuerySpherical(k) for k in range(0,n)]
-            
+        print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
         # Initially, all samples are noise.
-        labels = -np.ones(n)
+        labels = -np.ones(n).astype(int)
         #======================================================
         # From here the algorithm is essentially the same as sklearn
         #======================================================

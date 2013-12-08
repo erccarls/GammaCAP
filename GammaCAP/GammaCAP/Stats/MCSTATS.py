@@ -113,8 +113,10 @@ class Scan:
         # Specifies the minimum energy of the input in MeV (autodetected by default, but if specified will clip data)
         ##@var eMax
         # Specifies the maximum energy of the input in MeV (autodetected by default, but if specified will clip data)
-        #@var output
+        ##@var output
         #If False, supresses progress output.
+        ##@var BG 
+        #The BGTools instance being used for the current scan.  Unused if nMinMethod & sigMethod = 'isotropic'
         self.D = D
         self.a           = float(a)
         self.eps         = float(eps)
@@ -138,7 +140,7 @@ class Scan:
         self.eMin = float(eMin)
         self.eMax = float(eMax)
         self.output = output
-        
+        self.BG = []
     def Compute_Clusters(self, mcSims):
         '''
         Main DBSCAN cluster method.  Input a list of simulation outputs and output a list of clustering properties for each simulation.
@@ -150,8 +152,7 @@ class Scan:
         # If not, try to locate in fermitools directory
         #====================================================================
         if self.diffModel == '':
-            try:
-                fermi_dir = os.environ['FERMI_DIR']
+            try: fermi_dir = os.environ['FERMI_DIR']
             except: raise KeyError('It appears that Fermitools is not setup or $FERMI_DIR environmental variable is not setup.  This is ok, but you must specify a path to the galactic diffuse model in the Scan.diffModel setting and isotropic model in Scan.isoModel') 
             path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/gll_iem_v05.fits'
             if os.path.exists(path)==True: self.diffModel = path
@@ -170,14 +171,23 @@ class Scan:
         start=time.time()
         
         # If specified energies, clip out events outside the energy range specified
-        idxLow,idxHigh = np.ones(len(mcSims[0])),np.ones(len(mcSims[0]))
-        if self.eMin!=-1: idxLow  = np.where(mcSims[3]>self.eMin)[0]
-        if self.eMax!=-1: idxHigh = np.where(mcSims[3]<self.eMax)[0]
-        mcSims = np.transpose(np.transpose(mcSims)[np.logical_and(idxLow,idxHigh)])
+        Low,High = np.ones(len(mcSims[0])),np.ones(len(mcSims[0]))
+        if self.eMin!=-1: Low  = mcSims[3]>self.eMin
+        if self.eMax!=-1: High = mcSims[3]<self.eMax
+        idx = np.where(np.logical_and(Low,High)==True)[0]
+        if len(idx) == 0: raise ValueError('No events within energies specified by eMin and eMax.')
+        mcSims = np.transpose(np.transpose(mcSims)[idx])
         
         # If integration time not specified, find min/max in input data
         if self.totalTime==-1:
             self.totalTime = np.max(mcSims[2])-np.min(mcSims[2])
+        
+        # By default find min/max input energies
+        if (self.eMin ==-1 and self.eMax==-1):
+            self.eMin, self.eMax = np.min(mcSims[3]),np.max(mcSims[3]) 
+        # Check that energies are within range or throw exception.
+        if (self.eMin<50 or self.eMax<0 or self.eMin>self.eMax or self.eMax>6e5): raise ValueError('Invalid or unspecified energies eMin/eMax.  Must be between 50 and 6e5 MeV.  If you did not set these, check that energies below this are not included in the input.')
+        
         
         # Compute the background density if not specified.
         #TODO: If bgDensity not set, compute automatically based on area and density.
@@ -197,54 +207,78 @@ class Scan:
                 
         
         #====================================================================
+        # Choose temporal search half-height 'a' based on fragmentation limits if not specified.
+        #====================================================================
+        if self.D==3:
+            if self.a==-1 and self.bgDensity!=-1:
+                self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
+            elif self.a==-1:
+                # Initialize the background model
+                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel)
+                # weight latitudes by solid angle
+                weights = np.abs(np.cos(np.linspace(-np.pi/4.,np.pi/4,1441)))
+                # mask out regions of low latitude (abs(b)<20 deg.)
+                start,stop = int(70/180.*1441.), int(110/180.*1441.)
+                weights[start:stop] = 0. 
+                # Compute Average
+                dens = np.mean(np.average(self.BG.BGMap, weights = weights,axis=0))
+                self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*dens)# set 'a' according to fragmentation limit.
+            
+            else: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
+            if self.output == True: print 'Temporal search half height set to ', self.a/3.15e7*12, 'months.'
+        
+        #====================================================================
         # Determine the values for nMin depending on the desired method
         #====================================================================
         # If isotropic method, we don't care about energy ranges.
         if self.nMinMethod == 'isotropic':
             if (self.bgDensity <=0): raise ValueError('bgDensity must be > 0 for nMinMethod="isotropic"') # Check Density
-            self.nMin=self.bgDensity*np.pi*self.eps**2. #
+            self.nMin=self.bgDensity*np.pi*self.eps**2.  # area of search times bg density
+            if self.D==3: self.nMin*=2*float(self.a)/self.totalTime # If 3-d search, rescale by temporal width. 
             # set nMin according to poisson z-score specified by nMinSigma
             self.nMin = self.nMin+self.nMinSigma*np.sqrt(self.nMin)
-        if self.nMinMethod=='nMin' and self.nMin<3: print 'Error: nMin must be >=3 for nMin mode'
+        if self.nMinMethod=='nMin' and self.nMin<3: raise ValueError('Error: nMin must be >=3 for nMin mode')
         # if not evaluating nMin isotropically or using a custom nMin, need to check energies of input
         else:
-            # By default find min/max input energies
-            if (self.eMin ==-1 and self.eMax==-1):
-                self.eMin, self.eMax = np.min(mcSims[3]),np.max(mcSims[3]) 
-            # Check that energies are within range or throw exception.
-            if (self.eMin<50 or self.eMax<0 or self.eMin>self.eMax or self.eMax>6e5): raise ValueError('Invalid or unspecified energies eMin/eMax.  Must be between 50 and 3e6 MeV.  If you did not set these, check that energies below this are not included in the input.')
-            # Initialize the background model
-            BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel)
+            if self.BG==[]:
+                # Initialize the background model
+                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel)
         if self.nMinMethod == 'BGInt':
             # Integrate the background
-            self.nMin = BG.GetIntegratedBG(l=mcSims[1],b=mcSims[0],A=self.eps,B=self.eps) # Integrate the background template to find nMins
+            self.nMin = self.BG.GetIntegratedBG(l=mcSims[1],b=mcSims[0],A=self.eps,B=self.eps) # Integrate the background template to find nMins
+            if self.D==3: self.nMin*=2*float(self.a)/self.totalTime # If 3-d search, rescale by temporal width. 
             # set nMin according to poisson z-score specified by nMinSigma  
             self.nMin = self.nMin+self.nMinSigma*np.sqrt(self.nMin)
         elif(self.nMinMethod == 'BGCenter'):
             # Retreive event density and multiply by eps-neighborhood area
-            self.nMin = BG.GetBG(l=mcSims[1],b=mcSims[0],A=self.eps,B=self.eps)*np.pi*self.eps**2
+            self.nMin = BG.GetBG(l=mcSims[1],b=mcSims[0])*np.pi*self.eps**2
+            if self.D==3: self.nMin*=2*float(self.a)/self.totalTime # If 3-d search, rescale by temporal width. 
             self.nMin = self.nMin+self.nMinSigma*np.sqrt(self.nMin)         
-        if self.output==True: 'Completed Initial Background Integration in', (time.time()-start), 's'
+        if self.output==True: print 'Completed Initial Background Integration in', (time.time()-start), 's'
+        if self.output==True: print 'Mean nMin' , np.mean(self.nMin)
+        
+        
         
         #====================================================================
         # Compute Clusters Using DBSCAN     
         #====================================================================
-        if self.output==True:"Beginning DBSCAN..."
+        if self.output==True:print "Beginning DBSCAN..."
         start=time.time()    
+
         dbscanResults = self.__DBSCAN_THREAD(mcSims)
-        if self.output==True: 'Completed DBSCAN and Cluster Statistics in', (time.time()-start), 's'
-        
-        if self.output==True:"Computing Cluster Properties..."
+        if self.output==True:print  'Completed DBSCAN in', (time.time()-start), 's'
+        print 'Found' , len(np.unique(dbscanResults))-1, 'clusters before prop calc.'
+        if self.output==True:print  "Computing Cluster Properties..."
         start=time.time()    
         ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims])
-        if self.output==True: 'Completed Cluster Properties in', (time.time()-start), 's'
-        
+        if self.output==True: print 'Completed Cluster Properties in', (time.time()-start), 's'
+
         if (self.fileout != ''): 
             pickle.dump(ClusterResults, open(self.fileout,'wb')) # Write to file if requested
-            if self.output==True: 'Results written to', self.fileout
+            if self.output==True: print 'Results written to', self.fileout
         self.clusterResults = ClusterResults
         return ClusterResults
-        
+            
         #====================================================================
         # Multithreaded versions, purely for reference.
         #====================================================================
@@ -302,26 +336,22 @@ class Scan:
         """
         labels,sim = input
         idx=np.where(labels!=-1)[0] # ignore the noise points
-        clusters = np.unique(labels[idx]).astype(int)
-    #    clusters   = np.array(np.int_(np.unique(labels)[1:])) # want to ignore the -1 for noise so ignore first element
-        CRLabels = np.array(labels)
+        clusters = np.unique(labels[idx]).astype(int) # find all the unique cluster labels
+        CRLabels = np.array(labels).astype(int)
     
         # Some beurocracy because of way numpy array typecast handles things
-        arrlen = len(np.unique(labels))
-        if 0 not in labels: # no clusters 
+        numClusters = len(np.unique(clusters))
+        if numClusters==0: # no clusters 
             CR = ClusterResult.ClusterResult(Labels=[], Coords=[], 
                                          CentX=[]    , CentY=[]    , CentT=[], 
                                          Sig95X=[]  , Sig95Y=[]  , Sig95T=[], 
                                          Size95X=[], Size95Y=[], Size95T=[], 
                                          MedR=[]      , MedT=[],
                                          Members=[], Sigs=[], 
-                                         SigsMethod=[], NumClusters=[],PA=[])  # initialize new cluster results object
-            CRNumClusters = 0 # Number of clusters found in the simulation
+                                         SigsMethod=[], NumClusters=0,PA=[])  # initialize new cluster results object
             return CR
-        elif arrlen != 2: CRNumClusters = np.array(np.shape(clusters))[0] # Number of clusters found in the simulation
-        elif arrlen == 2: 
-            CRNumClusters = 1 # Number of clusters found in the simulation
-            CRLabels, clusters = [np.array(labels),], [clusters,]
+        elif numClusters==1: clusters = [clusters,]# if one, we need to make into a list so we can iterate over it.
+        CRNumClusters = numClusters # Number of clusters found in the simulation     
         
         CRCoords = [self.__Get_Cluster_Coords(sim, labels, cluster) for cluster in clusters] # contains coordinate triplets for each cluster in clusters.
 
@@ -330,7 +360,7 @@ class Scan:
             CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T = np.transpose([self.__Cluster_Size(CRCoords[cluster]) for cluster in range(len(clusters))])
         elif self.metric=='spherical':
             CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T = np.transpose([self.__Cluster_Size_Spherical(CRCoords[cluster]) for cluster in range(len(clusters))])
-        else: print 'Invalid metric: ' , str(self.metric)
+        else: raise ValueError('Invalid metric: ' + str(self.metric))
         
             
         CRMembers = np.array([len(CRCoords[cluster]) for cluster in range(len(clusters))]) # count the number of points in each cluster.
@@ -354,7 +384,7 @@ class Scan:
         elif self.sigMethod == 'BGInt':
             CR.SigsMethod ='BGInt'
             CR.Sigs = np.array(self.BG.SigsBG(CR))
-        else: print 'Invalid significance evaluation method: ' , str(self.sigMethod)
+        else: raise ValueError('Invalid significance evaluation method: ' + str(self.sigMethod))
             
         return CR
         
@@ -422,21 +452,27 @@ class Scan:
             return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
                              [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
                              [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
-        # Pick axes
+        # Pick vector pointing from origin to centroid of cluster
         n = np.array([CentX0, CentY0,CentZ0])/r
-    
-        n=np.array(n)/np.sqrt(np.dot(n,n))
+        # normalize to 1
+        n = n/np.sqrt(np.dot(n,n))
+        # z unit vector pointing at north celestial pole
         nz = np.array([0.,0.,1.])
-        if (n!=nz).all():axis = np.cross(nz,n) 
-        else: axis = np.array([0,1,0])
-    
+        # Check that the normal vector isn't equal to +-90 or we will get a singularity later
+        # if we are ok, then choose a rotation axis in the xy plane which will rotate away the z component.
+        if (n!=nz).all() and (n!=-nz).all() : axis = np.cross(nz,n)  
+        else: axis = np.array([0,1,0]) #if at one of the poles, choose any axis.
+        # Find the rotation angle in radians
         theta = np.pi/2.-np.arccos(np.dot(nz,n))
-    
-        R1 = rotation_matrix(axis,-theta)
-        print np.dot(R1,n)
-        theta2 = np.pi/2-np.arccos(np.dot(R1,n)[0])
+        
+        R1 = rotation_matrix(axis,-theta) # construct the rotation matrix
+        # Find the second rotation angle which will center the cluster at (X,Y,Z)=(0,1,0)  
+        dot = np.dot(R1,n)
+        theta2 = (np.pi/2-np.arccos(dot[0]))
+        if dot[1]>0: theta2*=-1  # need to handle a sign issue
+        # construct second rotation matrix
         R2 = rotation_matrix(nz,theta2)
-        R  = np.dot(R2,R1)
+        R  = np.dot(R2,R1) # construct full rotation matrix 
         def rotate(n):
             n = n/np.sqrt(np.dot(n,n))
             return np.dot(R,n)
@@ -444,6 +480,7 @@ class Scan:
         # rotate all the vectors (Y component should be zero for all)
         X,Z,Y = np.rad2deg(np.transpose([rotate(np.transpose((x,y,z))[i]) for i in range(len(x))]))
         
+        # DEBUG
         #from matplotlib import pyplot as plt
         #plt.figure(0)
         #plt.scatter(X,Y)
@@ -451,7 +488,7 @@ class Scan:
         #plt.show()  
         
         # Convert Centroids back to lat/long in radians
-        CentY0 = np.rad2deg(np.arctan2(CentY0, CentX0))
+        CentY0 = (np.rad2deg(np.arctan2(CentY0, CentX0)) + 360.)%360
         CentX0 = np.rad2deg(np.arcsin(CentZ0/r))
          
         # Singular Value Decomposition

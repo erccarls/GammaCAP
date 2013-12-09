@@ -273,7 +273,8 @@ class DBSCAN(BaseEstimator, ClusterMixin):
                 d = arctan2(sqrt( square(cos(x)*sin(dLam) ) + square(cos(x[j])*sin(x)-sin(x[j])*cos(x)*cos(dLam)) ) , sin(x[j])*sin(x)+cos(x[j])*cos(x)*cos(dLam) )
                 
                 # Find where within time constraints if D=3, else just set all true
-                if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+eps*float(a),XT[idx] >= XT[k]-eps*float(a))
+                if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+float(a),XT[idx] >= XT[k]-
+                float(a))
                 else:    tcut = np.ones(len(idx)) 
                 # Find where the real distance is less than eps
                 rcut = d<np.deg2rad(eps)
@@ -333,7 +334,7 @@ def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin,D)
     idx = np.array([item for sublist in [item for sublist2 in Grid[il:ih,jl:jh] for item in sublist2] for item in sublist])
     if len(idx) !=0:
         # if D==3, cut on T, else include all.
-        if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+eps*float(a),XT[idx] >= XT[k]-eps*float(a))
+        if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+float(a),XT[idx] >= XT[k]-float(a))
         else:    tcut = np.ones(len(idx)) 
         tcut = np.where(tcut==True)[0]
         if len(tcut)!=0: 

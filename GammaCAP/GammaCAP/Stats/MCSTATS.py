@@ -26,7 +26,7 @@ class Scan:
     def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=3, nMinSigma=5. ,nCorePoints = 3, 
                  nMin = -1 , sigMethod ='BGInt', bgDensity=-1, totalTime=-1,inner=1.25,outer=2.0, 
                  fileout = '',numProcs = 1, plot=False,indexing=True,metric='spherical',eMax=-1,eMin=-1,
-                 output = True, diffModel = '', isoModel  = ''):
+                 output = True, diffModel = '', isoModel  = '',convType='both',containment=0.68):
         """
         Initialize the Scan object which contains settings for DBSCAN and various cluster property calculations.  Default settings handle most cases, but custom scans may also be done.
         All settings are immediately put into Scan member variables and detailed descriptions can be found there.
@@ -38,7 +38,7 @@ class Scan:
         ##@var a
         #The DBSCAN3d temporal search half-height.  Unused for 2d scans.\n
         #Values:  \n
-        #    -1 (DEFAULT): Uses the mean counts for the entire input simulation to compute the background density and then sets a as low as possible within the fragmentation limits.\n 
+        #    -1 (DEFAULT): Uses average expected background above 20% latitude l to estimate where the fragmentation limit lies.  Often, this is larger than one may want to search for and this parameter should be set explicitly.
         #    float>0: Specified in seconds.
         ##@var eps
         #The DBSCAN3d spatial search radius.\n
@@ -56,6 +56,8 @@ class Scan:
         #Z-score over mean background density to calculate the nMin parameter of DBSCAN.  Unused if nMinMethod='nMin'.\n
         #Values:\n
         #float>0 (DEFAULT 5).
+        ##@var convType
+        # Fermi-LAT conversion type.  Can be 'front','back', or 'both' (default)
         ##@var nMin
         # DBSCAN parameter for the minimum number of events in an eps-neighborhood before becoming a core point (Unused by default). If nMinMethod='nMin', this specifies the value to use.\n
         # Values:\n
@@ -117,6 +119,8 @@ class Scan:
         #If False, supresses progress output.
         ##@var BG 
         #The BGTools instance being used for the current scan.  Unused if nMinMethod & sigMethod = 'isotropic'
+        ##@var containment
+        # Containment fraction to use in automating choice of epsilon.  Defaults to 0.68, the 68% containment fraction.  Must be float in (0,1)
         self.D = D
         self.a           = float(a)
         self.eps         = float(eps)
@@ -141,12 +145,15 @@ class Scan:
         self.eMax = float(eMax)
         self.output = output
         self.BG = []
+        self.convType = convType
+        self.containment = containment
+        
     def Compute_Clusters(self, mcSims):
         '''
         Main DBSCAN cluster method.  Input a list of simulation outputs and output a list of clustering properties for each simulation.
         @param mcSims numpy.ndarray of shape(4,n) containing (latitude,longitude,time,energy) for 'spherical' (galactic) coordinates or (x,y,t,E) for 'euclidean' coordinates.
         @returns Returns a ClusterResult object with DBSCAN results.
-        '''
+        '''        
         #====================================================================
         # Check if the diffuse model path has been specified.  
         # If not, try to locate in fermitools directory
@@ -165,7 +172,8 @@ class Scan:
         if (self.metric=='spherical' and (np.max(mcSims[0]>90) or np.min(mcSims[1])<0)): raise ValueError("Invalid spherical coordinates.  Double check that input is (lat,long,t,E)")
             
         # Check that input shape is correct
-        if len(mcSims)!=4: raise ValueError("Invalid Input.  Requires input array of shape (4,n) corresponding to (B,L,T,E) or (X,Y,T,E)")
+        if len(mcSims)!=4: 
+            raise ValueError("Invalid Input.  Requires input array of shape (4,n) corresponding to (B,L,T,E) or (X,Y,T,E)")
         
         if self.output==True: print "Beginning Initial Background Integration..."
         start=time.time()
@@ -186,14 +194,16 @@ class Scan:
         if (self.eMin ==-1 and self.eMax==-1):
             self.eMin, self.eMax = np.min(mcSims[3]),np.max(mcSims[3]) 
         # Check that energies are within range or throw exception.
-        if (self.eMin<50 or self.eMax<0 or self.eMin>self.eMax or self.eMax>6e5): raise ValueError('Invalid or unspecified energies eMin/eMax.  Must be between 50 and 6e5 MeV.  If you did not set these, check that energies below this are not included in the input.')
+        if (self.eMin<50 or self.eMax<0 or self.eMin>self.eMax or self.eMax>6e5): 
+            raise ValueError('Invalid or unspecified energies eMin/eMax.  Must be between 50 and 6e5 MeV.  If you did not set these, check that energies below this are not included in the input.')
         
+        # Find epsilon by default.
+        if self.eps==-1:
+            self.eps = FermiPSF.GetR68(self.eMin,self.eMax,convType=self.convType, fraction=self.containment)
         
         # Compute the background density if not specified.
         #TODO: If bgDensity not set, compute automatically based on area and density.
         #TODO: make lat/long cuts and specify shorter or greater distance by sign of long1-long2
-        #TODO: autocompute timeScale a based on BGdensity
-        #TODO: Add fermi psf tools, including energy weighted averaging of r_68  
         #TODO: Add BDT tools
         #TODO: Improve centroid calculation using 1/r^2 weighting
         #TODO: Double check centroid uncertainties
@@ -213,18 +223,19 @@ class Scan:
             if self.a==-1 and self.bgDensity!=-1:
                 self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
             elif self.a==-1:
+            
                 # Initialize the background model
-                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel)
+                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
                 # weight latitudes by solid angle
                 weights = np.abs(np.cos(np.linspace(-np.pi/4.,np.pi/4,1441)))
                 # mask out regions of low latitude (abs(b)<20 deg.)
-                start,stop = int(70/180.*1441.), int(110/180.*1441.)
+                start,stop = int(80/180.*1441.), int(100/180.*1441.)
                 weights[start:stop] = 0. 
                 # Compute Average
                 dens = np.mean(np.average(self.BG.BGMap, weights = weights,axis=0))
-                self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*dens)# set 'a' according to fragmentation limit.
+                self.a = 3./2.*self.totalTime/(np.pi*self.eps**2*dens)# set 'a' according to fragmentation limit.
             
-            else: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
+            elif self.a==-1: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
             if self.output == True: print 'Temporal search half height set to ', self.a/3.15e7*12, 'months.'
         
         #====================================================================
@@ -242,7 +253,7 @@ class Scan:
         else:
             if self.BG==[]:
                 # Initialize the background model
-                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel)
+                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
         if self.nMinMethod == 'BGInt':
             # Integrate the background
             self.nMin = self.BG.GetIntegratedBG(l=mcSims[1],b=mcSims[0],A=self.eps,B=self.eps) # Integrate the background template to find nMins
@@ -257,7 +268,7 @@ class Scan:
         if self.output==True: print 'Completed Initial Background Integration in', (time.time()-start), 's'
         if self.output==True: print 'Mean nMin' , np.mean(self.nMin)
         
-        
+        if (self.nMin<3).any(): print "WARNING: Some points have expected eps-neighborhoods of <3 events.  DBSCAN may not provide reasonable results on such sparse data and it is recommended that you increase the size of energy bins."
         
         #====================================================================
         # Compute Clusters Using DBSCAN     
@@ -602,6 +613,51 @@ class Scan:
         else:
             return 0.
 
+def PlotGal(b,l,fname='',figsize=(6,4),s=0.01):
+    """
+    Helper function which requires the matplotlib toolkit 'basemap' to be installed.  Will plot galactic coordinates appropriately.
+    @param l Galactic latitude vector.
+    @param b Galactic latitude vector.
+    @param fname Save plot to the path fname.  Note that if this is a large scatter plot, one should use a rasterized format like .png instead of .pdf.
+    @param fname Save plot to the path fname.  Note that if this is a large scatter plot, one should use a rasterized format like .png instead of .pdf.
+    @param figsize matplotlib figure size in inches.  Default = (6,4)
+    @param ms marker size for scatter plot.  Default is 0.01 pt.
+    """
+    try:
+        from matplotlib import pyplot as plt
+        from mpl_toolkits.basemap import Basemap
+    except:
+        raise ImportError('It appears that the basemap package is not installed.  Please see instructions at http://matplotlib.org/basemap/users/installing.html')
+    
+    plt.figure(0,figsize=(10,10))
+    m = Basemap(projection='hammer',lon_0=0)
+    m.drawmapboundary(fill_color='#FFffff')
+    x, y = m(l,b)   
+    plt.scatter(x,y,s=s)
+    plt.show()
+    if fname!='': plt.savefig(fname)
+    return
+
+def PlotSpectrum(E,bins=30):
+    """
+    Plot the energy spectrum between the lowest and highest values using log-spaced bins.
+    @param E Vector of energies
+    @param bins Number of log-spaced bins.
+    """
+    # log space bins
+    bins=np.logspace(np.log10(min(E)),np.log10(max(E)),bins)
+    
+    counts, bins = np.histogram(E,bins=bins)
+    # need to compute dN/dE so divide by bin width.
+    values = [counts[i]/(bins[i+1]-bins[i]) for i in range(len(counts))]
+    # find center of bins
+    bins = [0.5*(bins[i]+bins[i+1]) for i in range(len(counts))]
+    plt.step(bins, values)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('Energy [MeV]')
+    plt.ylabel(r'dN/dE [MeV$^{-1}$]')
+    plt.show()
 
 def Mean_Significance(ClusterResults):
         """Given a set of ClusterResults, calculates the mean of the "mean significance weighted by number of cluster members" """

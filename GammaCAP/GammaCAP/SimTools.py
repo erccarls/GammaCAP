@@ -76,8 +76,14 @@ class SimTools:
             self.BGMaps.append(BGTools.BGTools(self.eMin,energies[start],self.time,self.diff_f,self.iso_f,self.convType))
             self.BGMaps += [BGTools.BGTools(energies[i],energies[i+1],self.time,self.diff_f,self.iso_f,self.convType) for i in range(start,stop)]
             self.BGMaps.append(BGTools.BGTools(energies[stop],self.eMax,self.time,self.diff_f,self.iso_f,self.convType))
+
         # load PSF
-        self.theta, self.psf = FermiPSF.GetPSF(eMin,eMax,convType=self.convType)
+        # find how many psf bins are needed
+        nSteps = int(np.ceil((np.log10(eMax)-np.log10(eMin))/0.25))
+        self.psfbins = np.logspace(np.log10(eMin-1e-5),np.log10(eMax+1e-5),nSteps+1)
+        self.psfenergies = (self.psfbins[:-1]+self.psfbins[1:])*0.5
+        self.psf = [FermiPSF.GetPSF(self.psfbins[i],self.psfbins[i+1],convType=self.convType)[1] for i in range(len(self.psfbins)-1)]
+        self.theta = FermiPSF.GetPSF(eMin,eMax,convType=self.convType)[0]
             
         
     def SimBG(self):
@@ -165,60 +171,119 @@ class SimTools:
         cdf = np.cumsum(y*widths)/SUM # get CDF 
         return x[np.argmin(np.abs(np.transpose(np.ones((n,len(cdf)))*cdf)-np.random.ranf(n)),axis=0)]
     
-    def AddPointSource(self, n , E=-1, T='rand', l='rand',b='rand',eMin=-1,eMax=-1):
+    def dNdE(self, eMin, eMax, flux, dnde,time=-1):
+        """
+        Converts a total flux and differential spectrum dN/dE (in (MeV)^-1 and arbitrary normalization) into a list of photon energies sampled between eMin and eMax. N_photons/s for Fermi-LAT P7Source with standard gtmktime cut 
+        filter="DATA_QUAL>0 && LAT_CONFIG==1 && ABS(ROCK_ANGLE)<52", taking into account the energy dependent effective area.
+        @param eMin Starting energy in MeV
+        @param eMax Final energy in MeV
+        @param flux Total integrated flux over energy range eMin-eMax in units (cm^2 s)^-1
+        @param dnde Differential spectrum in MeV^-1 with arbitrary normalization (e.g. dnde = lambda E: np.power(E/E_0,-Gamma)*np.exp(-(E-E_0)/float(E_C)) )
+        @param time Total exposure time in seconds.  If unspecified defaults to SimTools.totalTime.
+        @returns Energies. An array of energies corresponding to the sampled distribution.
+        """
+        if eMin>=eMax: raise ValueError("eMin must be less than eMax.")
+        if time==-1: time=self.time
+        # Interpolate effective area.  Empirically fudged to agree with  gtobssim simulations.
+        EAE =[1000.0, 1246.8043074919699, 1554.5209811805289, 1938.1834554225268, 2416.5354809304745, 3012.9468468312944, 3756.5551068736063, 4683.6890885809644, 5839.6437305958789, 7280.8929575254178, 9077.8487018306387, 11318.300864202816, 14111.706270978171, 17594.536164717007, 21936.943478492387, 27351.075622192155, 34101.438900287758, 42517.820912553041, 53011.402258943228, 66094.844682639901, 82407.337053328229, 102745.82280703213, 128103.93445261421, 159720.53728218854, 199140.25387836422, 248288.9263305887, 309567.7028515347, 385970.34537568642, 481229.48917856964]
+        EA = [0.51955367294747401, 0.53725310619600974, 0.56345609912606598, 0.59517718051541169, 0.60033182312125866, 0.59519701184785057, 0.61214804337069662, 0.60353362437011404, 0.59994041227554407, 0.61993746469187494, 0.61413705054359657, 0.62097389810831327, 0.61257477655091908, 0.60819360887649077, 0.61752099476440225, 0.61023974408392867, 0.64322968803451086, 0.66633671088141866, 0.7100934576526241, 0.72296484727761268, 0.77309826395497705, 0.79985117267717099, 0.86077869571883225, 0.83409234808019261, 0.80101651548441866, 0.88960586977831546, 0.82726449338741614, 0.83745725896659651, 0.28095470948365214]
+        if self.convType=='front':
+            EA = [0.27705384135395728, 0.28746741654944713, 0.30266349536113346, 0.3198112573790593, 0.32337358308150693, 0.32178752634074059, 0.33112541170349363, 0.3291900126295017, 0.32994917960478631, 0.34034233714956919, 0.34001599946144395, 0.35082953113032084, 0.34421329403821299, 0.33567575485071593, 0.3419835899058184, 0.33193906295843179, 0.35191189454062011, 0.35903789833375266, 0.37227060541766566, 0.39122898637283027, 0.39827420349539666, 0.42703918541238789, 0.45259616924773977, 0.43695291265776198, 0.43353986662816474, 0.47248776486151195, 0.43038370839781459, 0.45936474120530607, 0.17438568174847374]
+        if self.convType=='back':
+            EA = [0.24249983159351671, 0.24978568964656264, 0.26079260376493257, 0.27536592313635244, 0.27695824003975178, 0.27340948550711003, 0.28102263166720298, 0.27434361174061239, 0.2699912326707577, 0.27959512754230575, 0.27412105108215257, 0.27014436697799243, 0.26836148251270608, 0.27251785402577478, 0.27553740485858391, 0.27830068112549688, 0.29131779349389086, 0.30729881254766606, 0.33782285223495839, 0.33173586090478252, 0.37482406045958033, 0.37281198726478304, 0.40818252647109243, 0.39713943542243058, 0.36747664885625386, 0.41711810491680351, 0.3968807849896015, 0.37809251776129038, 0.1065690277351784]
+        
+        # energy bin edges for integration
+        n_samples = 250
+        e = np.logspace(np.log10(eMin),np.log10(eMax),n_samples+1)
+        ave = 0.5*(e[:-1]+e[1:]) # average energy in bin
+        width = e[1:]-e[:-1] #bin widths
+        
+        dnde2 = lambda x : dnde(x)*flux/np.sum(dnde(ave)*width)# normalize the integrated dnde to the given flux.
+        # convolve with effective area
+        effArea = lambda x: np.interp(x,EAE,np.array(EA))*1000.*time 
+        # This is the reshaped dn/de taking into account effective area etc..
+        dist = lambda x: effArea(x)*dnde2(x)
+        
+        # reintegrate new distribution
+        N_phot = np.random.poisson(np.sum(dist(ave)*width))
+        # This gives the number of photons.  Now we need to sample from dist
+        E = self.SampleDist(dist,n=N_phot, a=eMin,b=eMax)
+        return E
+    
+    def AddPointSource(self,n=-1, E=-1, T='rand', l='rand',b='rand'):
         """
         Add a point source with n photons and time and energies given by T,E.
         A point spread function will automatically be applied at the energy weighted mean energy, thus if simulating over many energies, should be done in chunks.
-        @param n Number of photons
-        @param E Energies in MeV If left unspecified will distributed according to power law E^-2.5 between eMin and eMax. numpy.ndarray shape(n) 
+        @param n Number of photons.  If unspecified, taken to be len(E). (and E must be specified)
+        @param E Energies in MeV If left unspecified will distributed according to power law E^-2.5 between eMin and eMax with n photons. numpy.ndarray shape(n) 
         @param T Times in seconds.  If left unspecified will distribute uniformly over SimTools.time. numpy.ndarray shape(n) 
         @param l Galactic longitude of centroid.  If left unspecified will choose random direction. float 
         @param b Galactic latitude of centroid.  If left unspecified will choose random direction. float
-        @param eMin Minimum energy for sampling in MeV. float
-        @param eMax Maximum energy for sampling in MeV. float
         @returns (b,l,T,E) of point source coordinates.
         """
         # Check energies.
-        if eMin==-1 or eMax==-1 or E==-1:
+        if (E!=-1).any() and (min(E)<self.eMin or max(E)>self.eMax):
+            # otherwise load the updated psf between the given energies
+            eMin,eMax = min(E)-1e-5,max(E)+1e-5
+            nSteps = int(np.ceil((np.log10(eMax)-np.log10(eMin))/0.25))
+            psfbins = np.logspace(np.log10(eMin),np.log10(eMax),nSteps+1)
+            psf = [FermiPSF.GetPSF(psfbins[i],psfbins[i+1],convType=self.convType)[1] for i in range(len(psfbins)-1)]
+            if len(psfbins)==0:
+                psf = (FermiPSF.GetPSF(eMin,eMax,convType=self.convType)[1],)
+            theta = FermiPSF.GetPSF(eMin,eMax,convType=self.convType)[0]
+        else:
             eMin,eMax = self.eMin,self.eMax
             # if using the preset energy range, don't need to reload psf
-            theta, psf = self.theta, self.psf
-        # otherwise load the updated psf
-        else: theta, psf = FermiPSF.GetPSF(eMin,eMax,convType=self.convType)
+            theta, psf,psfbins = self.theta, self.psf,self.psfbins
+
+        
         # Sample the energy spectrum if not provided
-        if E==-1: E = self.SampleE(eMin,eMax,n)
-        if T =='rand': T = np.random.randint(0,high=self.time,size=n)
-        if l =='rand': l=np.random.ranf()*360.
-        if b =='rand': b=np.rad2deg(np.arccos(2*np.random.ranf()-1))-90
+        if (E ==-1).any(): E = self.SampleE(eMin,eMax,n)
+        if n==-1: 
+            try: n=len(E)
+            except: raise ValueError('Need to specify n or a vector E.')
+
+        if str(T) =='rand': T = np.random.randint(0,high=self.time,size=n)
+        if str(l) =='rand': l=np.random.ranf()*360.
+        if str(b) =='rand': b=np.rad2deg(np.arccos(2*np.random.ranf()-1))-90
         #=============================================================
         # Here we apply the fermi point spread function.
         # Inverse monte carlo sampling of psf to obtain r
         # Get the energy averaged psf (with weighting ~ E^-2.5)
         #=============================================================
-         
-        psf = np.cumsum(psf) # Obtain CDF
-        # Invert histogram and sample
-        r = theta[np.argmin(np.abs(np.transpose(np.ones((n,len(psf)))*psf)-np.random.ranf(n)),axis=0)]
-        theta = 2*np.pi*np.random.ranf(n) # Random Angle 
-        # Find X and Y displacements
-        dY,dZ = np.deg2rad(r*np.cos(theta)),np.deg2rad(r*np.sin(theta))
+        dY,dZ = np.zeros(n),np.zeros(n)
+        # bin the energies
+        e = np.digitize(E,psfbins)
+        # make a list of bins containing samples
+        ue = np.unique(e)-1
+        # for each bin
+        for i in range(len(ue)):
+            # find which points are in this energy bin
+            idx = np.where(e-1==ue[i])[0]   
+            psfcum = np.cumsum(psf[ue[i]]) # Obtain CDF
+            # Invert histogram and sample
+            r = theta[np.argmin(np.abs(np.transpose(np.ones((n,len(psfcum)))*psfcum)-np.random.ranf(n)),axis=0)]
+            phi = 2*np.pi*np.random.ranf(n) # Random Angle 
+            # Find X and Y displacements
+            dY[idx],dZ[idx] = np.deg2rad(r*np.cos(phi)),np.deg2rad(r*np.sin(phi))
         # normalize the vectors.  Now (dx,dy,dz) can be rotated to correct galactic coords.
         dX = np.sqrt(1-dZ*dZ-dY*dY)
         # First rotate about y-axis to the correct lat.
         ny = np.array([0.,1.,0.])
         nz = np.array([0.,0.,1.])
         theta2,theta1 = np.deg2rad((l,b))    
-        R1 = self.__rotation_matrix(axis=ny,theta=theta1) # construct the rotation matrix
+        R1 = self.__rotation_matrix(axis=ny,theta=-theta1) # construct the rotation matrix
         # The second rotation will move to the correct longitude
         #R2 = self.__rotation_matrix(axis=nz,theta = theta2)
-        R2 = self.__rotation_matrix(axis=nz,theta =-l)
+        R2 = self.__rotation_matrix(axis=nz,theta =theta2)
         R  = np.dot(R2,R1) # construct full rotation matrix 
         def rotate(n):
-            n = n/np.sqrt(np.dot(n,n))
+            #n = n/np.sqrt(np.dot(n,n))
             return np.dot(R,n)
     
         # rotate all the vectors (Y component should be zero for all)
-        X,Y,Z = np.transpose([rotate(np.transpose((dX,dY,dZ))[i]) for i in range(len(dX))])
+        X,Y,Z = np.transpose(np.tensordot(np.transpose((dX,dY,dZ)),R, axes=1))
+        #X,Y,Z = np.transpose([rotate(np.transpose((dX,dY,dZ))[i]) for i in range(len(dX))])
 
         # Convert Centroids back to lat/long in radians
         Y = (np.rad2deg(np.arctan2(Y, X)) + 360.)%360 # longitude

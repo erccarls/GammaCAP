@@ -136,8 +136,8 @@ class Scan:
         self.bgDensity   = bgDensity
         self.totalTime   = totalTime
         self.inner       = float(inner)
-        self.fileout     = ''
-        self.fileout     = ''
+        self.outer       = float(outer)
+        self.fileout     = str(fileout)
         self.numProcs    = int(numProcs) 
         self.plot        = plot
         self.indexing    = bool(indexing)
@@ -223,13 +223,12 @@ class Scan:
             if self.a==-1 and self.bgDensity!=-1:
                 self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
             elif self.a==-1:
-            
                 # Initialize the background model
                 self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
                 # weight latitudes by solid angle
                 weights = np.abs(np.cos(np.linspace(-np.pi/4.,np.pi/4,1441)))
-                # mask out regions of low latitude (abs(b)<20 deg.)
-                start,stop = int(80/180.*1441.), int(100/180.*1441.)
+                # mask out regions of low latitude (abs(b)<5 deg.)
+                start,stop = int(85/180.*1441.), int(95/180.*1441.)
                 weights[start:stop] = 0. 
                 # Compute Average
                 dens = np.mean(np.average(self.BG.BGMap, weights = weights,axis=0))
@@ -391,7 +390,7 @@ class Scan:
         if self.sigMethod == 'isotropic':
             CR.Sigs  = np.array([self.__Compute_Cluster_Significance_3d_Isotropic(CR.Coords[cluster],CR.Size95X[cluster],CR.Size95Y[cluster], CR.Size95T[cluster]) for cluster in range(len(clusters))])
         elif self.sigMethod =='annulus':
-            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(CR.Coords[cluster], np.transpose(sim),CR.Size95X[cluster],CR.Size95Y[cluster], CR.Size95T[cluster]) for cluster in range(len(clusters))])
+            CR.Sigs   = np.array([self.__Compute_Cluster_Significance_3d_Annulus(CR.Coords[cluster], np.transpose(sim),CR.Size95X[cluster],CR.Size95Y[cluster], CR.Size95T[cluster], CR.CentX[cluster],CR.CentY[cluster]) for cluster in range(len(clusters))])
         elif self.sigMethod == 'BGInt':
             CR.SigsMethod ='BGInt'
             CR.Sigs = np.array(self.BG.SigsBG(CR))
@@ -568,7 +567,7 @@ class Scan:
         
         
         
-    def __Compute_Cluster_Significance_3d_Annulus(self,X_cluster,X_all,Size95X,Size95Y,Size95T):
+    def __Compute_Cluster_Significance_3d_Annulus(self,X_cluster,X_all,Size95X,Size95Y,Size95T,CentX0,CentY0):
         """
         Takes input list of coordinate triplets for the cluster and for the entire simulation and computes the cluster size.
         Next, the background level is computed by drawing an annulus centered on the the cluster with inner and outer radii 
@@ -584,27 +583,42 @@ class Scan:
         return:
             Cluster significance from Li & Ma (1983)
         """
-        #TODO: Update annulus method to ellipse calculation instead of spherical.
+        #TODO: Update annulus method to ellipse calculation instead of spherical.     
         # Default to zero significance
         if (len(X_cluster)==1):return 0
         # Otherwise.......
         x,y,t,e = np.transpose(X_cluster) # Reformat input
-        x_all,y_all,t_all = X_all # Reformat input
-        centX,centY,centT = np.mean(x), np.mean(y),np.mean(t) # Compute Centroid
-        r = np.sqrt(np.square(x-centX)+np.square(y-centY)) # Build list of radii from cluster centroid
-        countIndex = int(np.ceil(0.95*np.shape(r)[0]-1)) # Sort the list and choose the radius where the cumulative count is >95% 
-        clusterRadius = np.sort(r)[countIndex]             # choose the radius at this index 
-        ################################################################
-        # Estimate the background count
-        AnnulusVolume = np.pi* ((self.outer*clusterRadius)**2 -(self.inner*clusterRadius)**2)*(self.totalTime)
-        r_all = np.sqrt(np.square(x_all-centX)+np.square(y_all-centY)) # compute all points radius from the centroid. 
-        r_cut = np.logical_and(r_all>clusterRadius*self.inner,r_all<clusterRadius*self.outer)# Count the number of points within the annulus and find BG density
-        idx =  np.where(r_cut==True)[0] # pick points in the annulus
-        BGDensity = np.shape(idx)[0]/AnnulusVolume # Density = counts / annulus volume 
+        x_all,y_all,t_all,e_all = np.transpose(X_all) # Reformat input
+        
+        
+        if self.metric=='euclidean':
+            ################################################################
+            # Estimate the background count
+            AnnulusVolume = np.pi* ((self.outer*Size95X)**2 -(self.inner*Size95X)**2)*(self.totalTime)
+            r_all = np.sqrt(np.square(x_all-CentX0)+np.square(y_all-CentY0)) # compute all points radius from the centroid. 
+            r_cut = np.logical_and(r_all>Size95X*self.inner,r_all<Size95X*self.outer)# Count the number of points within the annulus and find BG density
+            idx =  np.where(r_cut==True)[0] # pick points in the annulus
+            BGDensity = np.shape(idx)[0]/AnnulusVolume # Density = counts / annulus volume 
+        if self.metric=='spherical':
+            dPhi = np.deg2rad(x_all-CentX0) # lat 
+            dLam = np.deg2rad(y_all-CentY0) # lon
+            
+            x_all = np.deg2rad(x_all)
+            # Distances using Vincenty's formula for arc length on a great circle.
+            cos = np.cos
+            sin = np.sin
+            d = np.arctan2(np.sqrt( np.square(cos(x_all)*sin(dLam) ) + np.square(cos(CentX0)*sin(x_all)-sin(CentX0)*cos(x_all)*cos(dLam)) ) , sin(CentX0)*sin(x_all)+cos(CentX0)*cos(x_all)*cos(dLam) )
+            gt = np.rad2deg(d)>self.inner*Size95X        
+            lt = np.rad2deg(d)<self.outer*Size95X
+            cnt = np.count_nonzero(np.logical_and(gt,lt))
+            x_all = np.rad2deg(x_all)
+            AnnulusVolume = np.pi* ((self.outer*Size95X)**2 -(self.inner*Size95X)**2)*(self.totalTime)            
+            BGDensity = float(cnt) / AnnulusVolume            
+        
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
         N_bg = np.pi * Size95X*Size95Y * 2*Size95T* BGDensity # BG count = cluster volume*bgdensity
-        N_cl = countIndex # Number of counts in cluster.
+        N_cl = 0.95*len(x) # Number of counts in cluster.
         # Ensure log args are greater than 0.
         if N_cl/(N_cl+N_bg) <= 0 or N_bg/(N_cl+N_bg) <= 0: return 0 
         S2 = 2.0*(N_cl*np.log(2.0*N_cl/(N_cl+N_bg)) + N_bg*np.log(2.0*N_bg/(N_cl+N_bg)))
@@ -613,7 +627,7 @@ class Scan:
         else:
             return 0.
 
-def PlotGal(b,l,fname='',figsize=(6,4),s=0.01):
+def PlotGal(b,l,fname='',figsize=(6,4),s=0.01,**kwargs):
     """
     Helper function which requires the matplotlib toolkit 'basemap' to be installed.  Will plot galactic coordinates appropriately.
     @param l Galactic latitude vector.
@@ -622,6 +636,7 @@ def PlotGal(b,l,fname='',figsize=(6,4),s=0.01):
     @param fname Save plot to the path fname.  Note that if this is a large scatter plot, one should use a rasterized format like .png instead of .pdf.
     @param figsize matplotlib figure size in inches.  Default = (6,4)
     @param ms marker size for scatter plot.  Default is 0.01 pt.
+    @returns (plt,m) Pyplot instance and basemap instance
     """
     try:
         from matplotlib import pyplot as plt
@@ -630,19 +645,20 @@ def PlotGal(b,l,fname='',figsize=(6,4),s=0.01):
         raise ImportError('It appears that the basemap package is not installed.  Please see instructions at http://matplotlib.org/basemap/users/installing.html')
     
     plt.figure(0,figsize=(10,10))
-    m = Basemap(projection='hammer',lon_0=0)
+    m = Basemap(projection='hammer',lon_0=0,**kwargs)
     m.drawmapboundary(fill_color='#FFffff')
     x, y = m(l,b)   
     plt.scatter(x,y,s=s)
     plt.show()
     if fname!='': plt.savefig(fname)
-    return
+    return plt,m
 
-def PlotSpectrum(E,bins=30):
+def PlotSpectrum(E,bins=30,**kwargs):
     """
     Plot the energy spectrum between the lowest and highest values using log-spaced bins.
     @param E Vector of energies
     @param bins Number of log-spaced bins.
+    @returns Pyplot instance
     """
     # log space bins
     bins=np.logspace(np.log10(min(E)),np.log10(max(E)),bins)
@@ -652,12 +668,12 @@ def PlotSpectrum(E,bins=30):
     values = [counts[i]/(bins[i+1]-bins[i]) for i in range(len(counts))]
     # find center of bins
     bins = [0.5*(bins[i]+bins[i+1]) for i in range(len(counts))]
-    plt.step(bins, values)
+    plt.step(bins, values,**kwargs)
     plt.yscale('log')
     plt.xscale('log')
     plt.xlabel('Energy [MeV]')
     plt.ylabel(r'dN/dE [MeV$^{-1}$]')
-    plt.show()
+    return plt
 
 def Mean_Significance(ClusterResults):
         """Given a set of ClusterResults, calculates the mean of the "mean significance weighted by number of cluster members" """

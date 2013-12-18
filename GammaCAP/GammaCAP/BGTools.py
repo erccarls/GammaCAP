@@ -16,7 +16,7 @@ class BGTools:
         @param Emax  Maximum energy in MeV.
         @param Time   Total Integration time in seconds.
         @param diff_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
-        @param iso_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
+        @param iso_f Abosulte path to diffuse BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/iso_source_v05.txt') where $FERMI_DIR is the Fermi science tools installation path.
         """
         #TODO: Recalibrate BGTemplate normalization with gtselect filtering
         ##@var Emin  
@@ -30,7 +30,7 @@ class BGTools:
         # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
         # (instructions at http://planck.ucsc.edu/gammacap).
         ##@var iso_f 
-        # Abosulte path to isotropic BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
+        # Abosulte path to isotropic BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/iso_source_v05.txt') where $FERMI_DIR is the Fermi science tools installation path.
         # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
         # (instructions at http://planck.ucsc.edu/gammacap)
         ##@var BGMap
@@ -56,7 +56,7 @@ class BGTools:
         @param Emax  Maximum energy in MeV.
         @param Time  Total Integration time in seconds.
         @param diff_f Abosulte path to diffuse BG model (DEFAULT '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
-        @param iso_f Abosulte path to diffuse BG model (DEFAULT '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.        
+        @param iso_f Abosulte path to diffuse BG model (DEFAULT '$FERMI_DIR/refdata/fermi/galdiffuse/iso_source_v05.txt') where $FERMI_DIR is the Fermi science tools installation path.        
         """ 
         if float(self.Emin)<50:  raise ValueError("High Energy must be >= than 50 GeV in units MeV")
         if int(self.Emax)>int(6e5): raise ValueError("High Energy must be <= than 600 GeV in units MeV")
@@ -72,7 +72,8 @@ class BGTools:
             if os.path.exists(path)==True: self.diff_f = path
             else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download to this directory or specify the path in Scan.diffModel' )
         if self.iso_f == '':
-            path = fermi_dir + '/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt'
+            path = os.path.join(os.path.dirname(__file__), 'isotrop_4years_P7_v9_repro_source_v1.txt')
+            #path = fermi_dir + '/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_source_v1.txt'
             if os.path.exists(path)==True: self.iso_f = path
             else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download or specify an alternate path in Scan.isoModel.' ) 
         
@@ -118,7 +119,7 @@ class BGTools:
         try:
             energies,N = np.transpose(np.genfromtxt(self.iso_f, delimiter=None,autostrip=True))
         except:
-            raise ValueError('Invalid path for isotropic diffuse model.')
+            raise ValueError('Isotropic diffuse model does not have 2 columns.')
             
         isotrop = np.multiply(N[emin:emax],weights)
         # Sum the photon counts
@@ -228,8 +229,9 @@ class BGTools:
                 
                 b_idx[down]   = -b_idx[down]      # invert the latitudes 
                 b_idx[up]     = -b_idx[up]%len_b  # invert the latitudes 
-                # Average each of the three squares mena rates with weights equal to area. 
+                # Average each of the three squares mean rates with weights equal to area. 
                 # (note widths all the same so just weight by height)                
+                np.seterr(divide='ignore')
                 rate[i] = np.average( np.nan_to_num([np.mean(self.BGMap[b_idx[normal]][:,l_idx]),
                                        np.mean(self.BGMap[b_idx[up]][:,(l_idx+len_l/2)%len_l]),
                                        np.mean(self.BGMap[b_idx[down]][:,(l_idx+len_l/2)%len_l])]),

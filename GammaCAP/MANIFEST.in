@@ -1,0 +1,2 @@
+include GammaCAP/*.fits
+include GammaCAP/*.txt

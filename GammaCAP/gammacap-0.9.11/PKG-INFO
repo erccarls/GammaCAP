@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: gammacap
+Version: 0.9.11
+Summary: Gamma Ray Cluster Analysis Package
+Home-page: http://planck.ucsc.edu/gammacap
+Author: Eric Carlson
+Author-email: erccarls@ucsc.edu
+License: UNKNOWN
+Description: The gammacap package provides statistical tools and clustering algorithms for analysis of gamma-ray data and is an acronym for "Gamma-ray Clustering Analysis Package. It is actively maintained and written in pure python, requiring only standard scientific libraries.
+Platform: UNKNOWN

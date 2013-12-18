@@ -10,7 +10,7 @@ import numpy as np
 import scipy.cluster as cluster
 from matplotlib.backends.backend_pdf import PdfPages
 import DBSCAN
-from GammaCAP.BGTools import BGTools
+from .. import BGTools
 import multiprocessing as mp
 from multiprocessing import pool
 from functools import partial
@@ -18,23 +18,24 @@ import ClusterResult
 import scipy.linalg as la
 import time,os
 import pyfits
+from .. import FermiPSF
 
 class Scan:
     """
     Class containing DBSCAN setup and cluster properties.  This is the only object a general user will need to interact with.
     """
-    def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=3, nMinSigma=5. ,nCorePoints = 3, 
+    def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=2, nMinSigma=5. ,nCorePoints = 3, 
                  nMin = -1 , sigMethod ='BGInt', bgDensity=-1, totalTime=-1,inner=1.25,outer=2.0, 
                  fileout = '',numProcs = 1, plot=False,indexing=True,metric='spherical',eMax=-1,eMin=-1,
-                 output = True, diffModel = '', isoModel  = '',convType='both',containment=0.68):
+                 output = True, diffModel = '',convType='both',containment=0.68):
         """
         Initialize the Scan object which contains settings for DBSCAN and various cluster property calculations.  Default settings handle most cases, but custom scans may also be done.
         All settings are immediately put into Scan member variables and detailed descriptions can be found there.
         """
         ##@var D
-        # Number of dimensions for DBSCAN to use. DDEFAULT=3\n
+        # Number of dimensions for DBSCAN to use. DDEFAULT=2\n
         # Values:\n
-        # int in {2,3} (DEFAULT=3)
+        # int in {2,3} (DEFAULT=2)
         ##@var a
         #The DBSCAN3d temporal search half-height.  Unused for 2d scans.\n
         #Values:  \n
@@ -71,7 +72,7 @@ class Scan:
         ##@var diffModel
         # Absolute path to the galactic diffuse model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
         ##@var isoModel
-        # Absolute path to the diffuse isotropic model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
+        # Unused
         ##@var clusterResults
         # Stores the ClusterResults object from each scan. 
         ##@var nCorePoints
@@ -129,7 +130,7 @@ class Scan:
         self.nMin        = int(nMin)
         self.metric      = metric
         self.diffModel   = diffModel
-        self.isoModel    = isoModel
+        self.isoModel    = ''
         self.clusterResults = []
         self.nCorePoints = int(nCorePoints)  
         self.sigMethod   = sigMethod
@@ -148,7 +149,7 @@ class Scan:
         self.convType = convType
         self.containment = containment
         
-    def Compute_Clusters(self, mcSims):
+    def ComputeClusters(self, mcSims):
         '''
         Main DBSCAN cluster method.  Input a list of simulation outputs and output a list of clustering properties for each simulation.
         @param mcSims numpy.ndarray of shape(4,n) containing (latitude,longitude,time,energy) for 'spherical' (galactic) coordinates or (x,y,t,E) for 'euclidean' coordinates.
@@ -164,10 +165,10 @@ class Scan:
             path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/gll_iem_v05.fits'
             if os.path.exists(path)==True: self.diffModel = path
             else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download to this directory or specify the path in Scan.diffModel' )
-        if self.isoModel == '':
-            path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt'
-            if os.path.exists(path)==True: self.isoModel = path
-            else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download or specify an alternate path in Scan.isoModel.' ) 
+        #if self.isoModel == '':
+        #    path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/iso_source_v05.txt'
+        #    if os.path.exists(path)==True: self.isoModel = path
+        #    else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download or specify an alternate path in Scan.isoModel.' ) 
         # Check if lat and longitude are mixed up.
         if (self.metric=='spherical' and (np.max(mcSims[0]>90) or np.min(mcSims[1])<0)): raise ValueError("Invalid spherical coordinates.  Double check that input is (lat,long,t,E)")
             
@@ -175,7 +176,7 @@ class Scan:
         if len(mcSims)!=4: 
             raise ValueError("Invalid Input.  Requires input array of shape (4,n) corresponding to (B,L,T,E) or (X,Y,T,E)")
         
-        if self.output==True: print "Beginning Initial Background Integration..."
+        #if self.output==True: print "Beginning Initial Background Integration..."
         start=time.time()
         
         # If specified energies, clip out events outside the energy range specified
@@ -215,16 +216,16 @@ class Scan:
 #              if in euclidean, just use normal rectangular area
 #             elif self.metric == 'euclidean':
                 
-        
+        np.seterr(divide='ignore')
         #====================================================================
         # Choose temporal search half-height 'a' based on fragmentation limits if not specified.
         #====================================================================
         if self.D==3:
             if self.a==-1 and self.bgDensity!=-1:
-                self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
+                self.a = 3./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
             elif self.a==-1:
                 # Initialize the background model
-                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
+                self.BG = BGTools.BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
                 # weight latitudes by solid angle
                 weights = np.abs(np.cos(np.linspace(-np.pi/4.,np.pi/4,1441)))
                 # mask out regions of low latitude (abs(b)<5 deg.)
@@ -233,9 +234,10 @@ class Scan:
                 # Compute Average
                 dens = np.mean(np.average(self.BG.BGMap, weights = weights,axis=0))
                 self.a = 3./2.*self.totalTime/(np.pi*self.eps**2*dens)# set 'a' according to fragmentation limit.
+                if self.output == True: print 'Expected background count is', (np.pi*self.eps**2*dens)/self.totalTime*3.15e7/12, 'events per month.'
             
             elif self.a==-1: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
-            if self.output == True: print 'Temporal search half height set to ', self.a/3.15e7*12, 'months.'
+            if self.output == True: print 'Temporal search half height set to', self.a/3.15e7*12, 'months.'
         
         #====================================================================
         # Determine the values for nMin depending on the desired method
@@ -252,7 +254,7 @@ class Scan:
         else:
             if self.BG==[]:
                 # Initialize the background model
-                self.BG = BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
+                self.BG = BGTools.BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
         if self.nMinMethod == 'BGInt':
             # Integrate the background
             self.nMin = self.BG.GetIntegratedBG(l=mcSims[1],b=mcSims[0],A=self.eps,B=self.eps) # Integrate the background template to find nMins
@@ -267,18 +269,18 @@ class Scan:
         if self.output==True: print 'Completed Initial Background Integration in', (time.time()-start), 's'
         if self.output==True: print 'Mean nMin' , np.mean(self.nMin)
         
-        if (self.nMin<3).any(): print "WARNING: Some points have expected eps-neighborhoods of <3 events.  DBSCAN may not provide reasonable results on such sparse data and it is recommended that you increase the size of energy bins."
+        if (np.mean(self.nMin)<3): print "WARNING: Most points have expected eps-neighborhoods of <3 events.  DBSCAN is less reliable on such sparse data. You may want to increase the size of energy bins."
         
         #====================================================================
         # Compute Clusters Using DBSCAN     
         #====================================================================
-        if self.output==True:print "Beginning DBSCAN..."
+        #if self.output==True:print "Beginning DBSCAN..."
         start=time.time()    
 
         dbscanResults = self.__DBSCAN_THREAD(mcSims)
         if self.output==True:print  'Completed DBSCAN in', (time.time()-start), 's'
-        print 'Found' , len(np.unique(dbscanResults))-1, 'clusters before prop calc.'
-        if self.output==True:print  "Computing Cluster Properties..."
+
+        #if self.output==True:print  "Computing Cluster Properties..."
         start=time.time()    
         ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims])
         if self.output==True: print 'Completed Cluster Properties in', (time.time()-start), 's'
@@ -287,8 +289,9 @@ class Scan:
             pickle.dump(ClusterResults, open(self.fileout,'wb')) # Write to file if requested
             if self.output==True: print 'Results written to', self.fileout
         self.clusterResults = ClusterResults
+        if self.output ==True : print 'Found' , len(np.unique(dbscanResults))-1, 'clusters.'
         return ClusterResults
-            
+
         #====================================================================
         # Multithreaded versions, purely for reference.
         #====================================================================
@@ -367,9 +370,9 @@ class Scan:
 
         # Compute sizes and centroids
         if self.metric=='euclidean':
-            CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T = np.transpose([self.__Cluster_Size(CRCoords[cluster]) for cluster in range(len(clusters))])
+            CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T,CRSig95R, CRe, CRDens33, CRDens66, CRDens100 = np.transpose([self.__Cluster_Size(CRCoords[cluster]) for cluster in range(len(clusters))])
         elif self.metric=='spherical':
-            CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T = np.transpose([self.__Cluster_Size_Spherical(CRCoords[cluster]) for cluster in range(len(clusters))])
+            CRSize95X, CRSize95Y, CRSize95T, CRPA, CRMedR, CRMedT, CRCentX,CRCentY,CRCentT,CRSig95X,CRSig95Y,CRSig95T, CRSig95R, CRe, CRDens33, CRDens66, CRDens100 = np.transpose([self.__Cluster_Size_Spherical(CRCoords[cluster]) for cluster in range(len(clusters))])
         else: raise ValueError('Invalid metric: ' + str(self.metric))
         
             
@@ -380,7 +383,7 @@ class Scan:
                                          Sig95X=CRSig95X  , Sig95Y=CRSig95Y  , Sig95T=CRSig95T, 
                                          Size95X=CRSize95X, Size95Y=CRSize95Y, Size95T=CRSize95T, 
                                          MedR=CRMedR      , MedT=CRMedT,
-                                         Members=CRMembers, Sigs=[], 
+                                         Members=CRMembers, Sigs=[], Sig95R=CRSig95R, e=CRe, Dens33=CRDens33, Dens66=CRDens66, Dens100=CRDens100,
                                          SigsMethod=self.sigMethod, NumClusters=CRNumClusters,PA=CRPA)  # initialize new ClusterResults instance
         # If two dimensional, set the size95T to half  the total exposure time so that significance is computed correctly.
         if self.D==2: CR.Size95T = self.totalTime/2.*np.ones(len(CR.Size95T))
@@ -395,7 +398,7 @@ class Scan:
             CR.SigsMethod ='BGInt'
             CR.Sigs = np.array(self.BG.SigsBG(CR))
         else: raise ValueError('Invalid significance evaluation method: ' + str(self.sigMethod))
-            
+
         return CR
         
     
@@ -411,6 +414,10 @@ class Scan:
         X,Y,T,E = np.transpose(cluster_coords)
         CentX0,CentY0,CentT0 = np.mean(X),np.mean(Y), np.mean(T)
         X, Y = X-CentX0, Y-CentY0 
+        r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2)
+        CentX0, CentY0 = np.average(x,weights=1/r_all),np.average(y,weights=1/r_all)
+        r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2 )
+        SIG95R = 2.*np.std(r_all/np.sqrt(len(X)))
         
         # Singular Value Decomposition
         U,S,V = la.svd((X,Y))
@@ -437,9 +444,12 @@ class Scan:
         dt = np.abs(T-CentT0)
         countIndexT = int(np.ceil(0.95*np.shape(dt)[0]-1))
         SIZE95T = np.sort(dt)[countIndexT]   # choose the radius at this index
+        
+        e = np.sqrt(1-SIZE95Y**2/SIZE95X**2)
+        val,bins = np.histogram(r_all, bins=np.linspace(0,SIZE95X,4))
+        Dens33, Dens66, Dens100 = val/float(len(r_all))
     
-        return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CENTX,CENTY,CentT0,SIG95X,SIG95Y,SIG95T
-    
+        return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CENTX,CENTY,CentT0,SIG95X,SIG95Y,SIG95T, SIG95R, e, Dens33, Dens66, Dens100
     
     def __Cluster_Size_Spherical(self,cluster_coords):
         """Returns basic cluster properties, given a set of cluster coordinate triplets"""
@@ -453,6 +463,10 @@ class Scan:
         # Compute Cartesian Centroids
         CentX0,CentY0,CentZ0,CentT0 = np.mean(x),np.mean(y), np.mean(z), np.mean(T)
         r = np.sqrt(CentX0**2 + CentY0**2 + CentZ0**2)
+        r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2 + (z-CentZ0)**2)
+        CentX0, CentY0, CentZ0 = np.average(x,weights=1/r_all),np.average(y,weights=1/r_all),np.average(z,weights=1/r_all)
+        r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2 + (z-CentZ0)**2)
+        SIG95R = 2.*np.std(r_all/np.sqrt(len(x)))
         
         # Rotate away Z components so we are in the x,z plane and properly oriented with galactic coordinates
         def rotation_matrix(axis,theta):
@@ -532,7 +546,12 @@ class Scan:
         countIndexT = int(np.ceil(0.95*np.shape(dt)[0]-1))
         SIZE95T = np.sort(dt)[countIndexT]   # choose the radius at this index
     
-        return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CentX0,CentY0,CentT0,SIG95X,SIG95Y,SIG95T
+        e = np.sqrt(1-SIZE95Y**2/SIZE95X**2)
+        val,bins = np.histogram(r_all, bins=np.linspace(0,SIZE95X,4))
+        Dens33, Dens66, Dens100 = val/float(len(r_all))
+        
+    
+        return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CentX0,CentY0,CentT0,SIG95X,SIG95Y,SIG95T, SIG95R, e, Dens33, Dens66, Dens100
     
     
     def __Compute_Cluster_Significance_3d_Isotropic(self, X, Size95X,Size95Y, Size95T):
@@ -554,7 +573,7 @@ class Scan:
         dT = 2*Size95T/float(self.totalTime) # Rescale according to the total time.
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
-        if dT > .01: # This would be a 15 day period     
+        if dT > .01: 
             N_bg,N_cl = N_bg*dT, countIndex
             if N_cl/(N_cl+N_bg)<1e-20 or N_bg/(N_cl+N_bg)<1e-20:
                 return 0
@@ -645,13 +664,24 @@ def PlotGal(b,l,fname='',figsize=(6,4),s=0.01,**kwargs):
         raise ImportError('It appears that the basemap package is not installed.  Please see instructions at http://matplotlib.org/basemap/users/installing.html')
     
     plt.figure(0,figsize=(10,10))
-    m = Basemap(projection='hammer',lon_0=0,**kwargs)
+    m = Basemap(projection='hammer',lon_0=0)
     m.drawmapboundary(fill_color='#FFffff')
     x, y = m(l,b)   
-    plt.scatter(x,y,s=s)
-    plt.show()
+    plt.scatter(x,y,s=s,**kwargs)
     if fname!='': plt.savefig(fname)
     return plt,m
+
+def PlotClusters(CR,**kwargs):
+    """
+    Plots clusters from a cluster results object.
+    @param CR A ClusterResults object
+    @param **kwargs Keyword arguments to pass to pyplot.scatter()
+    """
+    master = [[],[],[],[]]
+    for coords in CR.Coords:
+        master = np.append(master,np.transpose(coords),axis=1)
+    b,l,t,e = master
+    PlotGal(b,l,**kwargs)
 
 def PlotSpectrum(E,bins=30,**kwargs):
     """

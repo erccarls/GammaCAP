@@ -23,7 +23,7 @@ class SimTools:
     studies, one should still use gtobssim.
     """
 
-    def __init__(self,eMin=1000,eMax=6e5,time=4*3.15e7,diff_f='', iso_f='',convType='both'):
+    def __init__(self,eMin=1000,eMax=6e5,time=4*3.15e7,diff_f='',convType='both'):
         """
         Initialize the simulation object.  Background tempmlates are built during initilization so any future changes to parameters should create a new SimTools instance.
         """
@@ -38,9 +38,7 @@ class SimTools:
         # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
         # (instructions at http://planck.ucsc.edu/gammacap).
         ##@var iso_f 
-        # Abosulte path to isotropic BG model (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
-        # if left as empty string "" will attempt to locate it automatically if $FERMI_DIR is a valid environmental variable pointing to the fermi science tools directory.  Otherwise can be downloaded 
-        # (instructions at http://planck.ucsc.edu/gammacap)
+        # Unused
         ##@var BGMaps
         # Contains a list of 2-d arrays with the diffuse galactic and isotropic backgrounds integrated over the energies and times specified during initialization.  Map units are photons/deg^2 and the effective area etc.. 
         # have been empirically determined to agree with gtobssim.  If the diffuse and isotropic models are used with an instrument other than Fermi-LAT, such as CTA or Veritas, the normalizations of each energy 
@@ -53,7 +51,7 @@ class SimTools:
         self.eMax = float(eMax)
         self.time = float(time)
         self.diff_f = diff_f
-        self.iso_f  = iso_f
+        self.iso_f  = ''
         self.convType = convType
         self.BGMaps = []
         self.sim    = []
@@ -222,7 +220,7 @@ class SimTools:
         @returns (b,l,T,E) of point source coordinates.
         """
         # Check energies.
-        if (E!=-1).any() and (min(E)<self.eMin or max(E)>self.eMax):
+        if (type(E)!=int) and (min(E)<self.eMin or max(E)>self.eMax):
             # otherwise load the updated psf between the given energies
             eMin,eMax = min(E)-1e-5,max(E)+1e-5
             nSteps = int(np.ceil((np.log10(eMax)-np.log10(eMin))/0.25))
@@ -235,10 +233,10 @@ class SimTools:
             eMin,eMax = self.eMin,self.eMax
             # if using the preset energy range, don't need to reload psf
             theta, psf,psfbins = self.theta, self.psf,self.psfbins
-
         
         # Sample the energy spectrum if not provided
-        if (E ==-1).any(): E = self.SampleE(eMin,eMax,n)
+        if type(E)==int:
+            if E ==-1: E = self.SampleE(eMin,eMax,n)
         if n==-1: 
             try: n=len(E)
             except: raise ValueError('Need to specify n or a vector E.')
@@ -272,18 +270,17 @@ class SimTools:
         ny = np.array([0.,1.,0.])
         nz = np.array([0.,0.,1.])
         theta2,theta1 = np.deg2rad((l,b))    
-        R1 = self.__rotation_matrix(axis=ny,theta=-theta1) # construct the rotation matrix
+        R1 = self.__rotation_matrix(axis=ny,theta=theta1) # construct the rotation matrix
         # The second rotation will move to the correct longitude
         #R2 = self.__rotation_matrix(axis=nz,theta = theta2)
-        R2 = self.__rotation_matrix(axis=nz,theta =theta2)
+        R2 = self.__rotation_matrix(axis=nz,theta =-theta2)
         R  = np.dot(R2,R1) # construct full rotation matrix 
         def rotate(n):
             #n = n/np.sqrt(np.dot(n,n))
             return np.dot(R,n)
     
         # rotate all the vectors (Y component should be zero for all)
-        X,Y,Z = np.transpose(np.tensordot(np.transpose((dX,dY,dZ)),R, axes=1))
-        #X,Y,Z = np.transpose([rotate(np.transpose((dX,dY,dZ))[i]) for i in range(len(dX))])
+        X,Y,Z = np.transpose([rotate(np.transpose((dX,dY,dZ))[i]) for i in range(len(dX))])
 
         # Convert Centroids back to lat/long in radians
         Y = (np.rad2deg(np.arctan2(Y, X)) + 360.)%360 # longitude

@@ -87,7 +87,79 @@ def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='
         pl.show()
 
     return labels
+
+def epsilonQuerySpherical_Thread(k,Xidx, Yidx, XX, XY, XT, Grid,GridSizeX, GridSizeY, high_grid_lat, low_grid_lat, a,eps,D,indexing):  
     
+    where = np.where     # Defined for quicker calls
+    square = np.square   # Defined for quicker calls
+    sin = np.sin
+    cos = np.cos
+    arctan2 = np.arctan2
+    sqrt = np.sqrt
+    if indexing == True:
+        i,j = Xidx[k],Yidx[k]
+        il,ih = i-1, i+2 # select neighboring grid indices.
+        if (XX[k]<85 and XX[k]>-85):
+            jl,jh = int(j-1./np.sin(np.abs(np.deg2rad(90-XX[k])))), int(j+2./np.abs(np.sin(np.deg2rad(90-XX[k])))) # np.sin(np.deg2rad(90-84))
+        # if within 10 degrees of either pole, return all points above or below
+        if il<=low_grid_lat:
+            jl,jh  = 0,GridSizeY # select all longitudes
+            il,ih  = 0,low_grid_lat+1
+        if ih>=high_grid_lat: 
+            jl,jh  = 0,GridSizeY # select all longitudes
+            il,ih  = high_grid_lat-1, GridSizeX
+        idx = []
+        # if we span the line of 0 longitude, we need to break into 2 chunks.
+        if (jl<0 or jh > GridSizeY):
+            
+            idx = idx + [item for sublist in [item for sublist2 in Grid[il:ih,int(-2-2):] for item in sublist2] for item in sublist]
+            idx = np.array(idx + [item for sublist in [item for sublist2 in Grid[il:ih,0:2+int(2.)] for item in sublist2] for item in sublist])
+        else:
+            idx = np.array([item for sublist in [item for sublist2 in Grid[il:ih,jl:jh] for item in sublist2] for item in sublist])
+    
+    if indexing==False: idx = np.array(range(0,n)).astype(int) # select all points
+    
+    #Compute real arc lengths for these points.
+    idx = np.append(idx,k).astype(int)
+    j = -1 # index of original point in reduced list
+    x = np.deg2rad(XX[idx])
+    y = np.deg2rad(XY[idx])
+    dPhi = x-x[j] # lat 
+    dLam = y-y[j] # lon
+    # Distances using Vincenty's formula for arc length on a great circle.
+    d = arctan2(sqrt( square(cos(x)*sin(dLam) ) + square(cos(x[j])*sin(x)-sin(x[j])*cos(x)*cos(dLam)) ) , sin(x[j])*sin(x)+cos(x[j])*cos(x)*cos(dLam) )
+    
+    # Find where within time constraints if D=3, else just set all true
+    if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+float(a),XT[idx] >= XT[k]-
+    float(a))
+    else:    tcut = np.ones(len(idx)) 
+    # Find where the real distance is less than eps
+    rcut = d<np.deg2rad(eps)
+    return idx[where(np.logical_and(rcut, tcut)==True)[0]] # This now contains indices of points in the eps neighborhood 
+    
+
+def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin,D):
+    """ Returns the epsilon neighborhood of a point for euclidean metric"""  
+    i,j = Xidx[k],Yidx[k]
+    il,ih = i-1, i+2
+    jl,jh = j-1, j+2
+    if jl<0  : jl=0
+    if il<0  : il=0
+    if ih>=GridSizeX: ih=-1
+    if jh>=GridSizeY: jh=-1
+    idx = np.array([item for sublist in [item for sublist2 in Grid[il:ih,jl:jh] for item in sublist2] for item in sublist])
+    if len(idx) !=0:
+        # if D==3, cut on T, else include all.
+        if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+float(a),XT[idx] >= XT[k]-float(a))
+        else:    tcut = np.ones(len(idx)) 
+        tcut = np.where(tcut==True)[0]
+        if len(tcut)!=0: 
+            idx = idx[tcut] #original indices meeting tcut  This is the rough eps neighborhood
+            # Compute actual distances using numpy vector methods                
+            return idx[np.where( np.square( XX[idx] - XX[k]) + np.square(XY[idx] - XY[k]) <= eps*eps)[0]]
+        else: return np.array([])
+    else: return np.array([])
+        
 
 class DBSCAN(BaseEstimator, ClusterMixin):
 #class DBSCAN(BaseEstimator):
@@ -222,11 +294,11 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         #===========================================================================
         if (metric == 'euclidean'):
             EPS_PARTIAL = partial(__epsQueryThread,  Xidx=Xidx,Yidx=Yidx,GridSizeX=GridSizeX,GridSizeY=GridSizeY,Grid=Grid,XT=XT,XX=XX,XY=XY,a=a,eps=eps,nMin=nMin)    
-            neighborhoods = map(EPS_PARTIAL,range(0,n)) # Call mutithreaded map.
-            #p = pool.Pool(mp.cpu_count()) # Allocate thread pool
-            #neighborhoods = p.map(EPS_PARTIAL,range(0,n)) # Call mutithreaded map.
-            #p.close()  # Kill pool after jobs complete.  required to free memory.
-            #p.join()   # wait for jobs to finish.
+            #neighborhoods = map(EPS_PARTIAL,range(0,n)) # Call mutithreaded map.
+            p = pool.Pool(mp.cpu_count()) # Allocate thread pool
+            neighborhoods = p.map(EPS_PARTIAL,range(0,n)) # Call mutithreaded map.
+            p.close()  # Kill pool after jobs complete.  required to free memory.
+            p.join()   # wait for jobs to finish.
     
         elif (metric=='spherical'):
             #=========================================================================================
@@ -280,8 +352,20 @@ class DBSCAN(BaseEstimator, ClusterMixin):
                 rcut = d<np.deg2rad(eps)
                 return idx[where(np.logical_and(rcut, tcut)==True)[0]] # This now contains indices of points in the eps neighborhood 
             #=========================================================================================
+            #import DBSCAN
+            #eps_partial = partial(DBSCAN.epsilonQuerySpherical_Thread,Xidx=Xidx, Yidx=Yidx, XX=XX, XY=XY, XT=XT, Grid=Grid,
+            #                       GridSizeX=GridSizeX, GridSizeY=GridSizeY, high_grid_lat=high_grid_lat, low_grid_lat=low_grid_lat,
+            #                       a=a,eps=eps,D=D,indexing=indexing)
+            #print mp.cpu_count()
+            #p = pool.Pool(mp.cpu_count()) # Allocate thread pool
+            #neighborhoods = p.map(eps_partial,range(0,n)) # Call mutithreaded map.
+            #p.close()  # Kill pool after jobs complete.  required to free memory.
+            #p.join()   # wait for jobs to finish.                       
+            # Serial Version
             neighborhoods = [ __epsilonQuerySpherical(k) for k in range(0,n)]
-        print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
+
+            
+        #print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
         # Initially, all samples are noise.
         labels = -np.ones(n).astype(int)
         #======================================================
@@ -321,28 +405,5 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         return core_samples, labels
 
 
-
-def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin,D):
-    """ Returns the epsilon neighborhood of a point for euclidean metric"""  
-    i,j = Xidx[k],Yidx[k]
-    il,ih = i-1, i+2
-    jl,jh = j-1, j+2
-    if jl<0  : jl=0
-    if il<0  : il=0
-    if ih>=GridSizeX: ih=-1
-    if jh>=GridSizeY: jh=-1
-    idx = np.array([item for sublist in [item for sublist2 in Grid[il:ih,jl:jh] for item in sublist2] for item in sublist])
-    if len(idx) !=0:
-        # if D==3, cut on T, else include all.
-        if D==3: tcut = np.logical_and(XT[idx] <= XT[k]+float(a),XT[idx] >= XT[k]-float(a))
-        else:    tcut = np.ones(len(idx)) 
-        tcut = np.where(tcut==True)[0]
-        if len(tcut)!=0: 
-            idx = idx[tcut] #original indices meeting tcut  This is the rough eps neighborhood
-            # Compute actual distances using numpy vector methods                
-            return idx[np.where( np.square( XX[idx] - XX[k]) + np.square(XY[idx] - XY[k]) <= eps*eps)[0]]
-        else: return np.array([])
-    else: return np.array([])
-    
     
 

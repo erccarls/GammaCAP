@@ -3,8 +3,9 @@ Main package for computing cluster statistics and performing DBSCAN operation.
 
 @author: Eric Carlson
 """
-
-import matplotlib.pyplot as plt  #@UnresolvedImport
+import matplotlib
+if matplotlib.get_backend() == 'WXAgg': matplotlib.use('QT4Agg')
+import matplotlib.pyplot as plt  
 import cPickle as pickle
 import numpy as np
 import scipy.cluster as cluster
@@ -19,6 +20,8 @@ import scipy.linalg as la
 import time,os
 import pyfits
 from .. import FermiPSF
+
+
 
 class Scan:
     """

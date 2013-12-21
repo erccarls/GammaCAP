@@ -231,11 +231,19 @@ class BGTools:
                 b_idx[up]     = -b_idx[up]%len_b  # invert the latitudes 
                 # Average each of the three squares mean rates with weights equal to area. 
                 # (note widths all the same so just weight by height)                
-                np.seterr(divide='ignore')
-                rate[i] = np.average( np.nan_to_num([np.mean(self.BGMap[b_idx[normal]][:,l_idx]),
-                                       np.mean(self.BGMap[b_idx[up]][:,(l_idx+len_l/2)%len_l]),
-                                       np.mean(self.BGMap[b_idx[down]][:,(l_idx+len_l/2)%len_l])]),
-                                     weights=[len(normal),len(up),len(down)])
+                
+                # Works but gives runtime errors.
+                #rate[i] = np.average( np.nan_to_num([np.mean(self.BGMap[b_idx[normal]][:,l_idx]),
+                #                       np.mean(self.BGMap[b_idx[up]][:,(l_idx+len_l/2)%len_l]),
+                #                       np.mean(self.BGMap[b_idx[down]][:,(l_idx+len_l/2)%len_l])]),
+                #                     weights=[len(normal),len(up),len(down)])
+                
+                
+                avg = np.mean(self.BGMap[b_idx[normal]][:,l_idx])*len(normal)
+                if len(up)!=0  : avg+=np.mean(self.BGMap[b_idx[up]]  [:,(l_idx+len_l/2)%len_l])  *len(up)
+                if len(down)!=0: avg+=np.mean(self.BGMap[b_idx[down]][:,(l_idx+len_l/2)%len_l])*len(down)
+                avg/=float(len(normal)+len(up)+len(down))
+                rate[i]=avg
                 
         # Finally, multiply by the ellipse area.
         return rate*np.pi*A*B

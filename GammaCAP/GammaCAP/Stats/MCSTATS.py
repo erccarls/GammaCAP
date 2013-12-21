@@ -20,7 +20,7 @@ import scipy.linalg as la
 import time,os
 import pyfits
 from .. import FermiPSF
-
+import sys
 
 
 class Scan:
@@ -236,7 +236,7 @@ class Scan:
             
             elif self.a==-1: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
             if self.output == True: print 'Temporal search half height set to', self.a/3.15e7*12, 'months.'
-        
+
         #====================================================================
         # Determine the values for nMin depending on the desired method
         #====================================================================
@@ -267,6 +267,7 @@ class Scan:
             self.nMin = self.nMin+self.nMinSigma*np.sqrt(self.nMin)         
         if self.output==True: print 'Completed Initial Background Integration in', (time.time()-start), 's'
         if self.output==True: print 'Mean nMin' , np.mean(self.nMin)
+        sys.stdout.flush()
         
         if (np.mean(self.nMin)<3): print "WARNING: Most points have expected eps-neighborhoods of <3 events.  DBSCAN is less reliable on such sparse data. You may want to increase the size of energy bins."
         
@@ -278,7 +279,7 @@ class Scan:
 
         dbscanResults = self.__DBSCAN_THREAD(mcSims)
         if self.output==True:print  'Completed DBSCAN in', (time.time()-start), 's'
-
+        sys.stdout.flush()
         #if self.output==True:print  "Computing Cluster Properties..."
         start=time.time()    
         ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims])
@@ -339,7 +340,7 @@ class Scan:
             @return Labels corresponding to the input points. 
             """
             X = np.transpose(sim[0:3])
-            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, nCorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric,D=self.D)      
+            return DBSCAN.RunDBScan3D(X, self.eps, nMin=self.nMin, a=self.a, nCorePoints=self.nCorePoints, plot=self.plot,indexing=self.indexing,metric=self.metric,D=self.D, output=self.output)      
     
     def __Cluster_Properties_Thread(self,input):
         """Internal Method which computes manages computation of various cluster properties.

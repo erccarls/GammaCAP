@@ -11,7 +11,7 @@ import multiprocessing as mp
 from multiprocessing import pool
 from functools import partial
 
-def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='euclidean',D=3):
+def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='euclidean',D=3, output=True):
     """
     Runs DBSCAN3D on photon list, X, of coordinate triplets using parameters eps and n_samples defining the search radius and the minimum number of events.
     
@@ -30,7 +30,7 @@ def RunDBScan3D(X,eps,nMin,a,nCorePoints =3 , plot=False,indexing=True, metric='
     #===========================================================================
     # Compute DBSCAN
     #===========================================================================
-    db = DBSCAN(eps, nMin=nMin, a=a,indexing=indexing,metric=metric,D=D).fit(X)
+    db = DBSCAN(eps, nMin=nMin, a=a,indexing=indexing,metric=metric,D=D, output=output).fit(X)
     core_samples = db.core_sample_indices_ # Select only core points.
     labels = db.labels_                    # Assign Cluster Labels
     # Get the cluster labels for each core point
@@ -160,7 +160,7 @@ def __epsQueryThread(k,Xidx,Yidx,GridSizeX,GridSizeY,Grid,XX,XY,XT,a,eps,nMin,D)
         else: return np.array([])
     else: return np.array([])
         
-
+import sys
 class DBSCAN(BaseEstimator, ClusterMixin):
 #class DBSCAN(BaseEstimator):
     """Perform DBSCAN clustering from vector array or distance matrix.
@@ -204,7 +204,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
     and Data Mining, Portland, OR, AAAI Press, pp. 226–231. 1996
     """
 
-    def __init__(self, eps, nMin, a,D=3, metric='spherical',indexing = True):
+    def __init__(self, eps, nMin, a,D=3, metric='spherical',indexing = True, output = True):
         ##@var eps 
         # DBSCAN Search radius float in input units of X.
         ##@var nMin 
@@ -223,6 +223,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         self.a = a
         self.indexing = indexing
         self.D = D
+        self.output= output
     def fit(self, X, **params):
         """Perform DBSCAN clustering from vector array or distance matrix.
 
@@ -233,7 +234,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
         self.core_sample_indices_, self.labels_ = self.dbscan3_indexed(X,**self.get_params())
         return self
 
-    def dbscan3_indexed(self, X, eps, nMin, a, metric,indexing,D):
+    def dbscan3_indexed(self, X, eps, nMin, a, metric,indexing,D, output ):
         """Perform DBSCAN clustering from vector array or distance matrix.
         @param X a set of coordinate triplets (lat,long,time) for each input sample.  If D=2, time is unused, and need not be given. 
         @param eps DBSCAN Search radius float in input units of X.
@@ -287,7 +288,6 @@ class DBSCAN(BaseEstimator, ClusterMixin):
                 Ytrue = np.where((Yidx[Xtrue]==j))[0]
                 Grid[i][j] = Xtrue[Ytrue]        
         #==============================================================================
-    
         
         #===========================================================================
         # Refine the epislon neighborhoods (compute the euclidean distances)
@@ -309,8 +309,13 @@ class DBSCAN(BaseEstimator, ClusterMixin):
             # ensure that these are within the grid bounds.
             if low_grid_lat<0: low_grid_lat=0
             if high_grid_lat >= GridSizeX: high_grid_lat=GridSizeX-1
+            #sys.stdout.write("\r" + '[') # return to start of line, after '['
             #def get_grid_points(k):  
             def __epsilonQuerySpherical(k):  
+                if (k)%(n/1000)==0:
+                    if output==True: sys.stdout.write("\rDBSCAN Run " + ("%.1f" % (100.*(k+1)/float(n))) + '% Complete')
+                    sys.stdout.flush()
+            
                 if indexing == True:
                     i,j = Xidx[k],Yidx[k]
                     il,ih = i-1, i+2 # select neighboring grid indices.
@@ -362,8 +367,9 @@ class DBSCAN(BaseEstimator, ClusterMixin):
             #p.close()  # Kill pool after jobs complete.  required to free memory.
             #p.join()   # wait for jobs to finish.                       
             # Serial Version
-            neighborhoods = [ __epsilonQuerySpherical(k) for k in range(0,n)]
 
+            neighborhoods = [ __epsilonQuerySpherical(k) for k in range(0,n)]
+            if output==True: print '\n',
             
         #print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
         # Initially, all samples are noise.

@@ -365,7 +365,7 @@ class DBSCAN(BaseEstimator, ClusterMixin):
             neighborhoods = [ __epsilonQuerySpherical(k) for k in range(0,n)]
 
             
-        print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
+        #print "Mean counts/eps-neighborhood", np.mean([len(nhood) for nhood in neighborhoods])
         # Initially, all samples are noise.
         labels = -np.ones(n).astype(int)
         #======================================================

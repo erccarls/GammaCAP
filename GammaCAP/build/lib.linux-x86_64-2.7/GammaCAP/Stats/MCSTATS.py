@@ -24,18 +24,18 @@ class Scan:
     """
     Class containing DBSCAN setup and cluster properties.  This is the only object a general user will need to interact with.
     """
-    def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=3, nMinSigma=5. ,nCorePoints = 3, 
+    def __init__(self, eps=-1. ,nMinMethod='BGInt', a = -1.,D=2, nMinSigma=5. ,nCorePoints = 3, 
                  nMin = -1 , sigMethod ='BGInt', bgDensity=-1, totalTime=-1,inner=1.25,outer=2.0, 
                  fileout = '',numProcs = 1, plot=False,indexing=True,metric='spherical',eMax=-1,eMin=-1,
-                 output = True, diffModel = '', isoModel  = '',convType='both',containment=0.68):
+                 output = True, diffModel = '',convType='both',containment=0.68):
         """
         Initialize the Scan object which contains settings for DBSCAN and various cluster property calculations.  Default settings handle most cases, but custom scans may also be done.
         All settings are immediately put into Scan member variables and detailed descriptions can be found there.
         """
         ##@var D
-        # Number of dimensions for DBSCAN to use. DDEFAULT=3\n
+        # Number of dimensions for DBSCAN to use. DDEFAULT=2\n
         # Values:\n
-        # int in {2,3} (DEFAULT=3)
+        # int in {2,3} (DEFAULT=2)
         ##@var a
         #The DBSCAN3d temporal search half-height.  Unused for 2d scans.\n
         #Values:  \n
@@ -72,7 +72,7 @@ class Scan:
         ##@var diffModel
         # Absolute path to the galactic diffuse model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/gll_iem_v05.fits') where $FERMI_DIR is the Fermi science tools installation path.
         ##@var isoModel
-        # Absolute path to the diffuse isotropic model. (typically '$FERMI_DIR/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt') where $FERMI_DIR is the Fermi science tools installation path.
+        # Unused
         ##@var clusterResults
         # Stores the ClusterResults object from each scan. 
         ##@var nCorePoints
@@ -130,7 +130,7 @@ class Scan:
         self.nMin        = int(nMin)
         self.metric      = metric
         self.diffModel   = diffModel
-        self.isoModel    = isoModel
+        self.isoModel    = ''
         self.clusterResults = []
         self.nCorePoints = int(nCorePoints)  
         self.sigMethod   = sigMethod
@@ -154,7 +154,8 @@ class Scan:
         Main DBSCAN cluster method.  Input a list of simulation outputs and output a list of clustering properties for each simulation.
         @param mcSims numpy.ndarray of shape(4,n) containing (latitude,longitude,time,energy) for 'spherical' (galactic) coordinates or (x,y,t,E) for 'euclidean' coordinates.
         @returns Returns a ClusterResult object with DBSCAN results.
-        '''        
+        '''     
+        np.seterr(divide='ignore')   
         #====================================================================
         # Check if the diffuse model path has been specified.  
         # If not, try to locate in fermitools directory
@@ -165,10 +166,10 @@ class Scan:
             path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/gll_iem_v05.fits'
             if os.path.exists(path)==True: self.diffModel = path
             else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download to this directory or specify the path in Scan.diffModel' )
-        if self.isoModel == '':
-            path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/isotrop_4years_P7_v9_repro_clean_v1.txt'
-            if os.path.exists(path)==True: self.isoModel = path
-            else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download or specify an alternate path in Scan.isoModel.' ) 
+        #if self.isoModel == '':
+        #    path = os.environ['FERMI_DIR'] + '/refdata/fermi/galdiffuse/iso_source_v05.txt'
+        #    if os.path.exists(path)==True: self.isoModel = path
+        #    else: raise ValueError('Fermitools appears to be setup, but cannot find diffuse model at path ' + path + '.  Please download or specify an alternate path in Scan.isoModel.' ) 
         # Check if lat and longitude are mixed up.
         if (self.metric=='spherical' and (np.max(mcSims[0]>90) or np.min(mcSims[1])<0)): raise ValueError("Invalid spherical coordinates.  Double check that input is (lat,long,t,E)")
             
@@ -176,7 +177,7 @@ class Scan:
         if len(mcSims)!=4: 
             raise ValueError("Invalid Input.  Requires input array of shape (4,n) corresponding to (B,L,T,E) or (X,Y,T,E)")
         
-        if self.output==True: print "Beginning Initial Background Integration..."
+        #if self.output==True: print "Beginning Initial Background Integration..."
         start=time.time()
         
         # If specified energies, clip out events outside the energy range specified
@@ -216,13 +217,13 @@ class Scan:
 #              if in euclidean, just use normal rectangular area
 #             elif self.metric == 'euclidean':
                 
-        
+        np.seterr(divide='ignore')
         #====================================================================
         # Choose temporal search half-height 'a' based on fragmentation limits if not specified.
         #====================================================================
         if self.D==3:
             if self.a==-1 and self.bgDensity!=-1:
-                self.a = 5./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
+                self.a = 3./2.*self.totalTime/(np.pi*self.eps**2*self.bgDensity) # set according to fragmentation limit.
             elif self.a==-1:
                 # Initialize the background model
                 self.BG = BGTools.BGTools(self.eMin,self.eMax,self.totalTime,self.diffModel, self.isoModel,self.convType)
@@ -234,9 +235,10 @@ class Scan:
                 # Compute Average
                 dens = np.mean(np.average(self.BG.BGMap, weights = weights,axis=0))
                 self.a = 3./2.*self.totalTime/(np.pi*self.eps**2*dens)# set 'a' according to fragmentation limit.
+                if self.output == True: print 'Expected background count is', (np.pi*self.eps**2*dens)/self.totalTime*3.15e7/12, 'events per month.'
             
             elif self.a==-1: raise ValueError('Must specify temporal search radius "a", provide bgDensity, or use nMin method "BGInt" or "BGCenter"')
-            if self.output == True: print 'Temporal search half height set to ', self.a/3.15e7*12, 'months.'
+            if self.output == True: print 'Temporal search half height set to', self.a/3.15e7*12, 'months.'
         
         #====================================================================
         # Determine the values for nMin depending on the desired method
@@ -273,13 +275,13 @@ class Scan:
         #====================================================================
         # Compute Clusters Using DBSCAN     
         #====================================================================
-        if self.output==True:print "Beginning DBSCAN..."
+        #if self.output==True:print "Beginning DBSCAN..."
         start=time.time()    
 
         dbscanResults = self.__DBSCAN_THREAD(mcSims)
         if self.output==True:print  'Completed DBSCAN in', (time.time()-start), 's'
 
-        if self.output==True:print  "Computing Cluster Properties..."
+        #if self.output==True:print  "Computing Cluster Properties..."
         start=time.time()    
         ClusterResults = self.__Cluster_Properties_Thread([dbscanResults,mcSims])
         if self.output==True: print 'Completed Cluster Properties in', (time.time()-start), 's'
@@ -572,7 +574,7 @@ class Scan:
         dT = 2*Size95T/float(self.totalTime) # Rescale according to the total time.
         ######################################################
         # Evaluate significance as defined by Li & Ma (1983).  N_cl corresponds to N_on, N_bg corresponds to N_off
-        if dT > .01: # This would be a 15 day period     
+        if dT > .01: 
             N_bg,N_cl = N_bg*dT, countIndex
             if N_cl/(N_cl+N_bg)<1e-20 or N_bg/(N_cl+N_bg)<1e-20:
                 return 0

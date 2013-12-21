@@ -1,2 +1,2 @@
 import BGTools, SimTools
-__all__=['FermiPSF','Stats']
+__all__=['FermiPSF','Stats','DataTools']

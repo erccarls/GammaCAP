@@ -154,7 +154,8 @@ class Scan:
         Main DBSCAN cluster method.  Input a list of simulation outputs and output a list of clustering properties for each simulation.
         @param mcSims numpy.ndarray of shape(4,n) containing (latitude,longitude,time,energy) for 'spherical' (galactic) coordinates or (x,y,t,E) for 'euclidean' coordinates.
         @returns Returns a ClusterResult object with DBSCAN results.
-        '''        
+        '''     
+        np.seterr(divide='raise')   
         #====================================================================
         # Check if the diffuse model path has been specified.  
         # If not, try to locate in fermitools directory
@@ -175,9 +176,6 @@ class Scan:
         # Check that input shape is correct
         if len(mcSims)!=4: 
             raise ValueError("Invalid Input.  Requires input array of shape (4,n) corresponding to (B,L,T,E) or (X,Y,T,E)")
-        
-        #if self.output==True: print "Beginning Initial Background Integration..."
-        start=time.time()
         
         # If specified energies, clip out events outside the energy range specified
         Low,High = np.ones(len(mcSims[0])),np.ones(len(mcSims[0]))
@@ -203,11 +201,8 @@ class Scan:
             self.eps = FermiPSF.GetR68(self.eMin,self.eMax,convType=self.convType, fraction=self.containment)
         
         # Compute the background density if not specified.
-        #TODO: If bgDensity not set, compute automatically based on area and density.
         #TODO: make lat/long cuts and specify shorter or greater distance by sign of long1-long2
         #TODO: Add BDT tools
-        #TODO: Improve centroid calculation using 1/r^2 weighting
-        #TODO: Double check centroid uncertainties
 #         if self.bgDensity ==-1:
 #             minX,maxX,minY,maxY = min(mcSims[0]),max(mcSims[0]),min(mcSims[1]),max(mcSims[1])
 #              if in spherical coords, compute solid angle of pseudo-rectangle
@@ -216,7 +211,7 @@ class Scan:
 #              if in euclidean, just use normal rectangular area
 #             elif self.metric == 'euclidean':
                 
-        np.seterr(divide='ignore')
+        
         #====================================================================
         # Choose temporal search half-height 'a' based on fragmentation limits if not specified.
         #====================================================================
@@ -242,7 +237,8 @@ class Scan:
         #====================================================================
         # Determine the values for nMin depending on the desired method
         #====================================================================
-        # If isotropic method, we don't care about energy ranges.
+        start=time.time()
+        # If isotropic method, we don't care about energy ranges.        
         if self.nMinMethod == 'isotropic':
             if (self.bgDensity <=0): raise ValueError('bgDensity must be > 0 for nMinMethod="isotropic"') # Check Density
             self.nMin=self.bgDensity*np.pi*self.eps**2.  # area of search times bg density

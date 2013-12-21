@@ -2,9 +2,11 @@ MANIFEST.in
 README
 setup.py
 GammaCAP/BGTools.py
+GammaCAP/DataTools.py
 GammaCAP/FermiPSF.py
 GammaCAP/SimTools.py
 GammaCAP/__init__.py
+GammaCAP/isotrop_4years_P7_v9_repro_source_v1.txt
 GammaCAP/psf_back.fits
 GammaCAP/psf_both.fits
 GammaCAP/psf_front.fits

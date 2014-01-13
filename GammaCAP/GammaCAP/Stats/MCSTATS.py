@@ -463,10 +463,18 @@ class Scan:
         # Compute Cartesian Centroids
         CentX0,CentY0,CentZ0,CentT0 = np.mean(x),np.mean(y), np.mean(z), np.mean(T)
         r = np.sqrt(CentX0**2 + CentY0**2 + CentZ0**2)
+        # Compute distance from zeroth order centroid for all points
         r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2 + (z-CentZ0)**2)
-        CentX0, CentY0, CentZ0 = np.average(x,weights=1/r_all),np.average(y,weights=1/r_all),np.average(z,weights=1/r_all)
+        
+        # Sort list and determine radius containing 6/7 of points.
+        sorted_r = np.sort(r_all)
+        ref_rad  = sorted_r[np.ceil(6./7*len(sorted_r))]
+        
+        idx = np.where(r_all<=ref_rad)[0]
+        
+        CentX0, CentY0, CentZ0 = np.average(x[idx],weights=1./r_all[idx]),np.average(y[idx],weights=1./r_all[idx]),np.average(z[idx],weights=1./r_all[idx])
         r_all = np.sqrt((x-CentX0)**2 + (y-CentY0)**2 + (z-CentZ0)**2)
-        SIG95R = 2.*np.std(r_all/np.sqrt(len(x)))
+        SIG95R = 2.*np.std(r_all[idx]/np.sqrt(6./7.*len(x)))
         
         # Rotate away Z components so we are in the x,z plane and properly oriented with galactic coordinates
         def rotation_matrix(axis,theta):

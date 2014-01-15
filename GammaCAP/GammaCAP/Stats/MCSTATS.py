@@ -468,7 +468,7 @@ class Scan:
         
         # Sort list and determine radius containing 6/7 of points.
         sorted_r = np.sort(r_all)
-        ref_rad  = sorted_r[np.ceil(6./7*len(sorted_r))]
+        ref_rad  = sorted_r[int(np.floor(6./7*len(sorted_r)))]
         
         idx = np.where(r_all<=ref_rad)[0]
         

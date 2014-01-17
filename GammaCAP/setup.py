@@ -4,7 +4,7 @@
 from setuptools import setup,find_packages
 
 setup(name='gammacap',
-      version='0.9.25',
+      version='0.9.26',
       description='Gamma Ray Cluster Analysis Package',
       long_description='The gammacap package provides statistical tools and clustering algorithms for analysis of gamma-ray data and is an acronym for "Gamma-ray Clustering Analysis Package. It is actively maintained and written in pure python, requiring only standard scientific libraries.',
       author='Eric Carlson',

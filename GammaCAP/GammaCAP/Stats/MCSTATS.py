@@ -559,7 +559,8 @@ class Scan:
         SIZE95T = np.sort(dt)[countIndexT]   # choose the radius at this index
     
         e = np.sqrt(1-SIZE95Y**2/SIZE95X**2)
-        val,bins = np.histogram(r_all, bins=np.linspace(0,SIZE95X,4))
+        
+        val,bins = np.histogram(np.rad2deg(r_all), bins=np.linspace(0,SIZE95X,4))
         Dens33, Dens66, Dens100 = val/float(len(r_all))
         
         return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CentX0,CentY0,CentT0,SIG95X,SIG95Y,SIG95T, SIG95R, e, Dens33, Dens66, Dens100

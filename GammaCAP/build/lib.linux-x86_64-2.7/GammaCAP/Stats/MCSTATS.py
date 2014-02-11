@@ -420,23 +420,28 @@ class Scan:
         SIG95R = 2.*np.std(r_all/np.sqrt(len(X)))
         
         # Singular Value Decomposition
-        U,S,V = la.svd((X,Y))
-        # Rotate to align x-coord to principle component
-        x = U[0][0]*X + U[0][1]*Y
-        y = U[1][0]*X + U[1][1]*Y
+        try:
+            U,S,V = la.svd((X,Y),full_matrices=False)
+            # Rotate to align x-coord to principle component
+            #x = U[0][0]*X + U[0][1]*Y
+            #y = U[1][0]*X + U[1][1]*Y
+        except MemoryError: 
+            print 'Memory Error in Singular Value decomposition.  Only effects position angle, and cluster is unlikely to be real with >10000 photons.  Not yet fixed.' 
+            #U,S,V = la.svd((X,Y), full_matrices=False)
         
         # Compute weighted average and stdev in rotated frame
-        weights = np.divide(1,np.sqrt(np.square(x)+np.square(y))) # weight by 1/r 
-        CentX, CentY = np.average(x,weights=weights), np.average(y,weights=weights)
-        SigX,SigY = np.sqrt(np.average(np.square(x-CentX), weights=weights)), np.sqrt(np.average(np.square(y-CentY), weights=weights))
+        #weights = np.divide(1,np.sqrt(np.square(x)+np.square(y))) # weight by 1/r 
+        #CentX, CentY = np.average(x,weights=weights), np.average(y,weights=weights)
+        #SigX,SigY = np.sqrt(np.average(np.square(x-CentX), weights=weights)), np.sqrt(np.average(np.square(y-CentY), weights=weights))
         # Find Position Angle
-        xref,yref = np.dot(U,[0,1])
-        theta = -np.rad2deg(np.arctan2(xref,yref))
-        POSANG = theta+90.
+        #xref,yref = np.dot(U,[0,1])
+        #theta = -np.rad2deg(np.arctan2(xref,yref))
+        #POSANG = theta+90.
+        POSANG = 0.
         
-        CentX ,CentY = np.dot(la.inv(U),(CentX,CentY)) #Translate the updated centroid into the original frame
+        #CentX ,CentY = np.dot(la.inv(U),(CentX,CentY)) #Translate the updated centroid into the original frame
         CENTX,CENTY =  CentX+CentX0,CentY+CentY0          # Add this update to the old centroids
-        SIG95X,SIG95Y = 2*SigX/np.sqrt(np.shape(x)[0]),2*SigY/np.sqrt(np.shape(x)[0]) 
+        SIG95X,SIG95Y = 2*SigX/np.sqrt(np.shape(X)[0]),2*SigY/np.sqrt(np.shape(X)[0]) 
         SIZE95X, SIZE95Y = 2*S/np.sqrt(len(X)) 
         
         r = np.sqrt(np.square(X-CentX)+np.square(Y-CentY))  # Build list of radii from cluster centroid
@@ -522,34 +527,33 @@ class Scan:
         # Convert Centroids back to lat/long in radians
         CentY0 = (np.rad2deg(np.arctan2(CentY0, CentX0)) + 360.)%360
         CentX0 = np.rad2deg(np.arcsin(CentZ0/r))
-         
+        
+        
         # Singular Value Decomposition
-        U,S,V = la.svd((X,Y))
+        try:
+            if len(X)<1000:
+                U,S,V = la.svd((X,Y),full_matrices=True)
+                # Rotate to align x-coord to principle component
+                x = U[0][0]*X + U[0][1]*Y
+                y = U[1][0]*X + U[1][1]*Y
+                SIZE95X, SIZE95Y = 2*S/np.sqrt(len(x))
+                
+                # Find Position Angle
+                xref,yref = np.dot(U,[0,1])
+                theta = -np.rad2deg(np.arctan2(xref,yref))
+                POSANG = theta+90.
+                #POSANG = 0.
+                SIG95X,SIG95Y = SIZE95X/np.sqrt(len(x)),SIZE95Y/np.sqrt(len(x))
+                
+            else: raise MemoryError
+        except MemoryError: 
+            print 'Memory Error in Singular Value decomposition.  Only position angle cannot be computed and is set to NaN.'
+            U,S,V = la.svd((X,Y), full_matrices=False)
+            SIZE95X, SIZE95Y = 2*S/np.sqrt(len(X))
+            SIG95X,SIG95Y = SIZE95X/np.sqrt(len(x)),SIZE95Y/np.sqrt(len(x))
+            POSANG = float('NaN') 
         
-        # Rotate to align x-coord to principle component
-        x = U[0][0]*X + U[0][1]*Y
-        y = U[1][0]*X + U[1][1]*Y
-        
-        # Compute weighted average and stdev in rotated frame
-        weights = np.divide(1,np.sqrt(np.square(x)+np.square(y))) # weight by 1/r 
-        CentX, CentY = np.average(x,weights=weights), np.average(y,weights=weights)
-        CentX,CentY =     CentX0, CentY0
-        SigX,SigY = np.sqrt(np.average(np.square(x-CentX), weights=weights)), np.sqrt(np.average(np.square(y-CentY), weights=weights))
-        
-        # Find Position Angle
-        xref,yref = np.dot(U,[0,1])
-        theta = -np.rad2deg(np.arctan2(xref,yref))
-        POSANG = theta+90.
-        
-       
-        #CentX ,CentY = np.dot(la.inv(U),(CentX,CentY)) #Translate the updated centroid into the original frame
-        #CENTX,CENTY =  CentX+CentX0,CentY+CentY0          # Add this update to the old centroids
-        SIG95X,SIG95Y = 2*SigX/np.sqrt(np.shape(x)[0]),2*SigY/np.sqrt(np.shape(x)[0]) 
-        SIZE95X, SIZE95Y = 2*S/np.sqrt(len(X)) 
-        #r = np.sqrt(np.square(X-CENTX)+np.square(y-CENTY))  # Build list of radii from cluster centroid
-        r = np.sqrt(np.square(X-CentX0)+np.square(y-CentY0))  # Build list of radii from cluster centroid
-        
-        SIG95T = np.std(T)/np.sqrt(np.shape(r)[0])
+        SIG95T = np.std(T)/np.sqrt(len(T))
         dt = np.abs(T-CentT0)
         countIndexT = int(np.ceil(0.95*np.shape(dt)[0]-1))
         SIZE95T = np.sort(dt)[countIndexT]   # choose the radius at this index
@@ -558,7 +562,6 @@ class Scan:
         val,bins = np.histogram(r_all, bins=np.linspace(0,SIZE95X,4))
         Dens33, Dens66, Dens100 = val/float(len(r_all))
         
-    
         return SIZE95X, SIZE95Y,SIZE95T, POSANG, np.median(r), np.median(dt), CentX0,CentY0,CentT0,SIG95X,SIG95Y,SIG95T, SIG95R, e, Dens33, Dens66, Dens100
     
     
